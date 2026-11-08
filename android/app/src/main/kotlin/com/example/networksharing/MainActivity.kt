@@ -3,6 +3,7 @@ package com.example.networksharing
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -14,6 +15,12 @@ class MainActivity : FlutterActivity() {
     private val channelName = "networksharing/bluetooth"
     private val permissionRequestCode = 4072
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingScanResult: MethodChannel.Result? = null
+    private val scanPermissionRequestCode = 4073
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val bondReceivers = mutableSetOf<android.content.BroadcastReceiver>()
+    private val bondResults = mutableMapOf<String, MethodChannel.Result>()
+    private val bondTimeouts = mutableMapOf<String, Runnable>()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -21,13 +28,134 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "inspect" -> inspectBluetooth(result)
+                    "prepare" -> prepareBluetooth(result)
+                    "pair" -> pairBluetooth(call.argument<String>("deviceId"), result)
+                    "setBackgroundTransport" -> {
+                        val enabled = call.argument<Boolean>("enabled") == true
+                        if (enabled) {
+                            val intent = android.content.Intent(this, BleForegroundService::class.java)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+                        } else stopService(android.content.Intent(this, BleForegroundService::class.java))
+                        result.success(true)
+                    }
+                    "openAppSettings" -> {
+                        startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+                        result.success(true)
+                    }
+                    "openBluetoothSettings" -> {
+                        startActivity(android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
     }
 
+    @Suppress("MissingPermission")
+    private fun pairBluetooth(deviceId: String?, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            result.error("permission_denied", "Bluetooth connect permission is required", null)
+            return
+        }
+        try {
+            // The BLE plugin encodes a MAC address in the last 12 UUID digits.
+            val node = deviceId?.takeIf { it.startsWith("00000000-0000-0000-0000-") }?.takeLast(12)
+            val address = node?.chunked(2)?.joinToString(":")?.uppercase() ?: deviceId
+            if (address == null || !BluetoothAdapter.checkBluetoothAddress(address)) {
+                result.error("invalid_device_id", "Bluetooth device identifier is invalid", null)
+                return
+            }
+            val device = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
+                .adapter?.getRemoteDevice(address)
+            if (device == null) {
+                result.error("device_not_found", "Bluetooth device is unavailable", null)
+            } else if (device.bondState == BluetoothDevice.BOND_BONDED) {
+                result.success(true)
+            } else {
+                if (bondResults.containsKey(device.address)) {
+                    result.error("busy", "Pairing is already pending for this device", null)
+                    return
+                }
+                val filter = android.content.IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+                val receiver = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: android.content.Intent) {
+                        val changedDevice = if (Build.VERSION.SDK_INT >= 33) {
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                        }
+                        if (changedDevice?.address != device.address) return
+                        val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
+                        if (state == BluetoothDevice.BOND_BONDED || state == BluetoothDevice.BOND_NONE) {
+                            unregisterReceiver(this)
+                            bondReceivers.remove(this)
+                            bondTimeouts.remove(device.address)?.let { mainHandler.removeCallbacks(it) }
+                            bondResults.remove(device.address)?.success(state == BluetoothDevice.BOND_BONDED)
+                        }
+                    }
+                }
+                bondReceivers.add(receiver)
+                bondResults[device.address] = result
+                val timeout = Runnable {
+                    if (bondResults.remove(device.address) != null) {
+                        unregisterReceiver(receiver)
+                        bondReceivers.remove(receiver)
+                        bondTimeouts.remove(device.address)
+                        result.error("pairing_timeout", "System Bluetooth pairing timed out", null)
+                    }
+                }
+                bondTimeouts[device.address] = timeout
+                mainHandler.postDelayed(timeout, 120_000)
+                if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(receiver, filter)
+                if (!device.createBond()) {
+                    unregisterReceiver(receiver)
+                    bondReceivers.remove(receiver)
+                    bondResults.remove(device.address)
+                    bondTimeouts.remove(device.address)?.let { mainHandler.removeCallbacks(it) }
+                    result.success(false)
+                }
+            }
+        } catch (_: SecurityException) {
+            result.error("permission_denied", "Bluetooth connect permission is required", null)
+        } catch (_: IllegalArgumentException) {
+            result.error("invalid_device_id", "Bluetooth device identifier is invalid", null)
+        }
+    }
+
+    private fun prepareBluetooth(result: MethodChannel.Result) {
+        if (pendingScanResult != null || pendingPermissionResult != null) {
+            result.error("busy", "A Bluetooth permission request is pending", null)
+            return
+        }
+        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        val missing = required.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) {
+            pendingScanResult = result
+            requestPermissions(missing.toTypedArray(), scanPermissionRequestCode)
+        } else completePreparation(result)
+    }
+
+    private fun completePreparation(result: MethodChannel.Result) {
+        val location = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        val locationEnabled = if (Build.VERSION.SDK_INT >= 28) location.isLocationEnabled else
+            location.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                location.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+        result.success(mapOf("sdk" to Build.VERSION.SDK_INT,
+            "locationRequired" to (Build.VERSION.SDK_INT <= 30),
+            "locationEnabled" to locationEnabled))
+    }
+
     private fun inspectBluetooth(result: MethodChannel.Result) {
-        if (pendingPermissionResult != null) {
+        if (pendingPermissionResult != null || pendingScanResult != null) {
             result.error("busy", "A permission request is already pending", null)
             return
         }
@@ -47,6 +175,14 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == scanPermissionRequestCode) {
+            val result = pendingScanResult ?: return
+            pendingScanResult = null
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                completePreparation(result)
+            } else result.error("bluetooth_permission_denied", "Bluetooth permissions were denied", null)
+            return
+        }
         if (requestCode != permissionRequestCode) return
         val result = pendingPermissionResult ?: return
         pendingPermissionResult = null
@@ -68,8 +204,16 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        bondTimeouts.values.forEach { mainHandler.removeCallbacks(it) }
+        bondTimeouts.clear()
+        bondResults.values.forEach { it.error("activity_destroyed", "Pairing interrupted", null) }
+        bondResults.clear()
+        bondReceivers.forEach { runCatching { unregisterReceiver(it) } }
+        bondReceivers.clear()
         pendingPermissionResult?.error("activity_destroyed", "Permission request interrupted", null)
         pendingPermissionResult = null
+        pendingScanResult?.error("activity_destroyed", "Permission request interrupted", null)
+        pendingScanResult = null
         super.onDestroy()
     }
 

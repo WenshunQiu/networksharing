@@ -19,6 +19,7 @@ abstract interface class BluetoothRepository {
   Future<void> startAdvertising();
   Future<void> stopAdvertising();
   Future<void> connect(String deviceId);
+  Future<void> pairSystemDevice(String deviceId);
   Future<void> disconnect();
   Future<void> sendMessage(String message);
   Stream<String> get messages;

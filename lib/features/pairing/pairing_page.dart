@@ -1,9 +1,11 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+
+import 'dart:async';
 
 import 'pairing_view_model.dart';
 import '../bluetooth/bluetooth_view_model.dart';
-import '../bluetooth/bluetooth_repository.dart';
 import '../../data/app_logger.dart';
 
 class PairingPage extends StatefulWidget {
@@ -20,7 +22,7 @@ class PairingPage extends StatefulWidget {
 
 class _PairingPageState extends State<PairingPage> {
   final _codeController = TextEditingController();
-  final _log = AppLogger.instance;
+  bool _automaticAdvertising = false;
   @override
   void dispose() {
     _codeController.dispose();
@@ -33,6 +35,19 @@ class _PairingPageState extends State<PairingPage> {
     builder: (context, _) => LayoutBuilder(
       builder: (context, constraints) {
         final vm = widget.viewModel;
+        final bluetooth = widget.bluetoothViewModel;
+        final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+        if (isWindows && !_automaticAdvertising && bluetooth != null) {
+          _automaticAdvertising = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            unawaited(bluetooth.setAdvertising(true));
+          });
+        }
+        if (isWindows && bluetooth != null) {
+          bluetooth.setDisplayedPairingCode(
+            vm.codeReady ? vm.pairingCode : null,
+          );
+        }
         return SingleChildScrollView(
           padding: EdgeInsets.all(constraints.maxWidth < 520 ? 20 : 32),
           child: Center(
@@ -47,31 +62,19 @@ class _PairingPageState extends State<PairingPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '在一端显示配对码，在另一端输入。',
+                    isWindows ? '将此验证码提供给连接的手机。' : '连接电脑后输入电脑屏幕显示的验证码。',
                     style: FluentTheme.of(context).typography.body,
                   ),
                   const SizedBox(height: 28),
-                  ToggleSwitch(
-                    checked: vm.isShowingCode,
-                    onChanged: (value) {
-                      _log.info('ui', 'pairing.mode_changed', {
-                        'mode': value ? 'show_code' : 'enter_code',
-                      });
-                      vm.setShowingCode(value);
-                    },
-                    content: Text(vm.isShowingCode ? '显示配对码' : '输入配对码'),
-                  ),
-                  const SizedBox(height: 20),
-                  const InfoBar(
-                    title: Text('应用配对认证尚未接入'),
-                    content: Text('BLE 连接仅建立传输通道，不代表设备已认证；请勿通过此通道发送热点凭据。'),
-                    severity: InfoBarSeverity.warning,
+                  InfoBar(
+                    title: Text(isWindows ? '等待手机连接' : '连接 Windows 电脑'),
+                    content: Text(
+                      isWindows
+                          ? '电脑持续广播 NetworkSharing 服务。保持蓝牙开启，手机连接后在本页显示配对码。'
+                          : '扫描附近正在广播的 Windows 电脑，连接后输入电脑屏幕显示的应用配对码。',
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  if (vm.isShowingCode)
-                    _ShowCode(viewModel: vm)
-                  else
-                    _EnterCode(controller: _codeController, viewModel: vm),
                   if (vm.message != null) ...[
                     const SizedBox(height: 16),
                     InfoBar(
@@ -81,11 +84,89 @@ class _PairingPageState extends State<PairingPage> {
                           : InfoBarSeverity.warning,
                     ),
                   ],
-                  if (widget.bluetoothViewModel != null) ...[
+                  if (widget.bluetoothViewModel != null && !isWindows) ...[
                     const SizedBox(height: 24),
                     _BluetoothDevices(
                       viewModel: widget.bluetoothViewModel!,
-                      showingCode: vm.isShowingCode,
+                      pairingViewModel: vm,
+                      codeController: _codeController,
+                    ),
+                  ],
+                  if (isWindows && widget.bluetoothViewModel != null) ...[
+                    const SizedBox(height: 18),
+                    AnimatedBuilder(
+                      animation: widget.bluetoothViewModel!,
+                      builder: (context, _) {
+                        final bluetooth = widget.bluetoothViewModel!;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            InfoBar(
+                              title: Text(
+                                bluetooth.applicationPaired
+                                    ? '应用配对成功'
+                                    : bluetooth.advertising
+                                    ? '正在广播，可供手机发现'
+                                    : '电脑广播未开启',
+                              ),
+                              content: bluetooth.applicationPaired
+                                  ? const Text('手机已验证电脑显示的配对码。')
+                                  : null,
+                              severity: bluetooth.applicationPaired
+                                  ? InfoBarSeverity.success
+                                  : bluetooth.advertising
+                                  ? InfoBarSeverity.success
+                                  : InfoBarSeverity.warning,
+                            ),
+                            if (vm.codeReady) ...[
+                              const SizedBox(height: 16),
+                              _ShowCode(viewModel: vm),
+                            ] else
+                              FilledButton(
+                                onPressed: vm.status == PairingStatus.pairing
+                                    ? null
+                                    : vm.regenerateCode,
+                                child: const Text('生成配对码'),
+                              ),
+                            if (bluetooth.connectedDeviceId != null) ...[
+                              const SizedBox(height: 16),
+                              if (vm.message != null)
+                                InfoBar(
+                                  title: Text(vm.message!),
+                                  severity: vm.status == PairingStatus.paired
+                                      ? InfoBarSeverity.success
+                                      : InfoBarSeverity.warning,
+                                ),
+                              FilledButton(
+                                onPressed: bluetooth.diagnosticSending
+                                    ? null
+                                    : bluetooth.sendDiagnosticMessage,
+                                child: const Text('发送链路测试消息'),
+                              ),
+                              Button(
+                                onPressed: () async {
+                                  await bluetooth.disconnect();
+                                  vm.setSystemPaired(false);
+                                },
+                                child: const Text('断开'),
+                              ),
+                            ],
+                            if (bluetooth.transportError != null)
+                              InfoBar(
+                                title: Text(bluetooth.transportError!),
+                                severity: InfoBarSeverity.error,
+                              ),
+                            if (bluetooth.diagnosticReceivedAt != null)
+                              InfoBar(
+                                title: const Text('已收到链路测试消息'),
+                                content: Text(
+                                  '接收时间：${bluetooth.diagnosticReceivedAt}',
+                                ),
+                                severity: InfoBarSeverity.info,
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                   const SizedBox(height: 28),
@@ -100,143 +181,111 @@ class _PairingPageState extends State<PairingPage> {
 }
 
 class _BluetoothDevices extends StatelessWidget {
-  const _BluetoothDevices({required this.viewModel, required this.showingCode});
+  const _BluetoothDevices({
+    required this.viewModel,
+    required this.pairingViewModel,
+    required this.codeController,
+  });
   final BluetoothViewModel viewModel;
-  final bool showingCode;
-
-  String _state(BluetoothState state) => switch (state) {
-    BluetoothState.ready => '蓝牙已开启',
-    BluetoothState.poweredOff => '蓝牙已关闭，请在系统设置中开启',
-    BluetoothState.unavailable => '此设备没有可用的蓝牙适配器',
-    BluetoothState.permissionDenied => '缺少附近设备权限，请在系统设置中允许',
-    BluetoothState.failed => '读取蓝牙状态失败，请重试',
-  };
+  final PairingViewModel pairingViewModel;
+  final TextEditingController codeController;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: viewModel,
-    builder: (context, _) {
-      final snapshot = viewModel.snapshot;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    builder: (context, _) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '附近的 Windows 电脑',
+          style: FluentTheme.of(context).typography.subtitle,
+        ),
+        const SizedBox(height: 12),
+        if (viewModel.error != null)
+          InfoBar(
+            title: Text(viewModel.error!),
+            severity: InfoBarSeverity.error,
+          ),
+        if (viewModel.transportError != null)
+          InfoBar(
+            title: Text(viewModel.transportError!),
+            severity: InfoBarSeverity.error,
+          ),
+        FilledButton(
+          onPressed: viewModel.scanning ? null : viewModel.scan,
+          child: Text(viewModel.scanning ? '正在扫描…' : '扫描 Windows 电脑'),
+        ),
+        if (viewModel.scanning) const ProgressBar(),
+        ...viewModel.discoveredDevices.map(
+          (device) => ListTile(
+            leading: const Icon(FluentIcons.bluetooth),
+            title: Text(device.name),
+            subtitle: const Text('NetworkSharing Windows 电脑'),
+            trailing: Button(
+              onPressed:
+                  viewModel.connecting || viewModel.connectedDeviceId != null
+                  ? null
+                  : () async {
+                      await viewModel.connect(device);
+                      if (viewModel.connectedDeviceId == device.id) {
+                        pairingViewModel.setSystemPaired(true);
+                        pairingViewModel.setMessage('已连接电脑，请输入电脑屏幕显示的配对码。');
+                      }
+                    },
+              child: Text(viewModel.connecting ? '正在连接…' : '连接电脑'),
+            ),
+          ),
+        ),
+        if (viewModel.connectedDeviceId != null) ...[
+          const SizedBox(height: 16),
+          _EnterCode(
+            controller: codeController,
+            viewModel: pairingViewModel,
+            onSubmit: () async {
+              pairingViewModel.setEnteredCode(codeController.text);
+              if (pairingViewModel.enteredCode.length != 6) {
+                pairingViewModel.setMessage(
+                  '请输入完整的 6 位配对码。',
+                  nextStatus: PairingStatus.error,
+                );
+                return;
+              }
+              pairingViewModel.setMessage(
+                '正在验证配对码。',
+                nextStatus: PairingStatus.pairing,
+              );
+              final accepted = await viewModel.authenticatePairingCode(
+                pairingViewModel.enteredCode,
+              );
+              pairingViewModel.setMessage(
+                accepted ? '应用配对成功。' : '配对码校验失败或电脑未响应。',
+                nextStatus: accepted
+                    ? PairingStatus.paired
+                    : PairingStatus.error,
+              );
+            },
+          ),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  '已绑定的蓝牙设备',
-                  style: FluentTheme.of(context).typography.subtitle,
-                ),
+              FilledButton(
+                onPressed: viewModel.diagnosticSending
+                    ? null
+                    : viewModel.sendDiagnosticMessage,
+                child: const Text('发送链路测试消息'),
               ),
-              IconButton(
-                icon: const Icon(FluentIcons.refresh),
-                onPressed: viewModel.checking ? null : viewModel.inspect,
+              const SizedBox(width: 8),
+              Button(
+                onPressed: () async {
+                  await viewModel.disconnect();
+                  pairingViewModel.setSystemPaired(false);
+                },
+                child: const Text('断开'),
               ),
             ],
           ),
-          if (viewModel.checking) const ProgressBar(),
-          if (viewModel.error != null)
-            InfoBar(
-              title: Text(viewModel.error!),
-              severity: InfoBarSeverity.error,
-            ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: viewModel.scanning ? null : viewModel.scan,
-            child: Text(
-              viewModel.scanning
-                  ? '正在扫描 NetworkSharing 设备…'
-                  : '扫描 NetworkSharing 设备',
-            ),
-          ),
-          if (showingCode) ...[
-            const SizedBox(height: 8),
-            ToggleSwitch(
-              checked: viewModel.advertising,
-              onChanged: viewModel.setAdvertising,
-              content: Text(
-                viewModel.advertising ? '正在广播，可被另一端发现' : '允许另一端发现此设备',
-              ),
-            ),
-          ],
-          if (viewModel.scanning) const ProgressBar(),
-          if (viewModel.transportError != null)
-            InfoBar(
-              title: Text(viewModel.transportError!),
-              severity: InfoBarSeverity.error,
-            ),
-          if (viewModel.connectedDeviceId != null) ...[
-            const SizedBox(height: 12),
-            InfoBar(
-              title: const Text('BLE 传输已连接，应用身份尚未认证'),
-              content: Text('设备 ID：${viewModel.connectedDeviceId}'),
-              severity: InfoBarSeverity.warning,
-            ),
-            Row(
-              children: [
-                FilledButton(
-                  onPressed: viewModel.sendDiagnosticMessage,
-                  child: const Text('发送链路测试消息'),
-                ),
-                const SizedBox(width: 8),
-                Button(
-                  onPressed: viewModel.disconnect,
-                  child: const Text('断开'),
-                ),
-              ],
-            ),
-          ],
-          if (viewModel.lastMessage != null)
-            InfoBar(
-              title: const Text('收到 BLE 消息'),
-              content: Text(viewModel.lastMessage!),
-              severity: InfoBarSeverity.info,
-            ),
-          if (viewModel.discoveredDevices.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...viewModel.discoveredDevices.map(
-              (device) => ListTile(
-                leading: const Icon(FluentIcons.bluetooth),
-                title: Text(device.name),
-                subtitle: const Text('NetworkSharing BLE；尚未认证'),
-                trailing: Button(
-                  onPressed:
-                      viewModel.connecting ||
-                          viewModel.connectedDeviceId != null
-                      ? null
-                      : () => viewModel.connect(device),
-                  child: Text(viewModel.connecting ? '正在连接…' : '连接传输'),
-                ),
-              ),
-            ),
-          ] else if (!viewModel.scanning &&
-              snapshot?.state == BluetoothState.ready)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text('扫描附近设备后，结果将在此显示。'),
-            ),
-          if (snapshot != null) ...[
-            const SizedBox(height: 8),
-            Text(_state(snapshot.state)),
-            if (snapshot.state == BluetoothState.ready &&
-                snapshot.devices.isEmpty)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('未发现系统已绑定设备。'),
-              )
-            else
-              ...snapshot.devices.map(
-                (device) => ListTile(
-                  leading: const Icon(FluentIcons.bluetooth),
-                  title: Text(device.name),
-                  subtitle: const Text('系统已绑定；尚未完成应用配对认证'),
-                ),
-              ),
-          ] else if (!viewModel.checking)
-            const Text('检查蓝牙状态并列出系统已绑定设备。'),
         ],
-      );
-    },
+      ],
+    ),
   );
 }
 
@@ -251,10 +300,7 @@ class _ShowCode extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '请在另一台设备输入此配对码',
-          style: FluentTheme.of(context).typography.subtitle,
-        ),
+        Text('请在手机输入此配对码', style: FluentTheme.of(context).typography.subtitle),
         const SizedBox(height: 18),
         Container(
           padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 18),
@@ -286,9 +332,14 @@ class _ShowCode extends StatelessWidget {
 }
 
 class _EnterCode extends StatelessWidget {
-  const _EnterCode({required this.controller, required this.viewModel});
+  const _EnterCode({
+    required this.controller,
+    required this.viewModel,
+    this.onSubmit,
+  });
   final TextEditingController controller;
   final PairingViewModel viewModel;
+  final Future<void> Function()? onSubmit;
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -307,11 +358,15 @@ class _EnterCode extends StatelessWidget {
       FilledButton(
         onPressed: viewModel.status == PairingStatus.pairing
             ? null
-            : () {
+            : () async {
                 AppLogger.instance.info('ui', 'pairing.submit_clicked', {
                   'codeLength': viewModel.enteredCode.length,
                 });
-                viewModel.submitCode();
+                if (onSubmit != null) {
+                  await onSubmit!();
+                } else {
+                  await viewModel.submitCode();
+                }
               },
         child: viewModel.status == PairingStatus.pairing
             ? const SizedBox.square(

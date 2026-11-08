@@ -5,6 +5,10 @@ import 'package:networksharing/features/pairing/pairing_repository.dart';
 import 'package:networksharing/features/settings/settings_repository.dart';
 import 'package:networksharing/domain/app_settings.dart';
 import 'package:networksharing/features/bluetooth/bluetooth_repository.dart';
+import 'package:networksharing/features/bluetooth/bluetooth_view_model.dart';
+import 'package:networksharing/features/status/connectivity_view_model.dart';
+import 'package:networksharing/features/status/device_status_page.dart';
+import 'package:networksharing/domain/connectivity.dart';
 
 void main() {
   for (final width in [390.0, 1200.0]) {
@@ -22,7 +26,8 @@ void main() {
       );
       await tester.pump();
       expect(find.text('连接你的设备'), findsOneWidget);
-      expect(find.text('重新生成配对码'), findsOneWidget);
+      expect(find.text('扫描 Windows 电脑'), findsOneWidget);
+      expect(find.text('重新生成配对码'), findsNothing);
       if (width < 760) {
         expect(
           find.byKey(const ValueKey('bottom-nav-pairing')),
@@ -62,6 +67,40 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('device status shows the paired peer state', (tester) async {
+    final bluetooth = BluetoothViewModel(TestBluetoothRepository())
+      ..connectedDeviceId = 'computer'
+      ..discoveredDevices = const [
+        BluetoothDevice(id: 'computer', name: 'Office PC'),
+      ]
+      ..applicationPaired = true;
+    final connectivity = ConnectivityViewModel(_TestConnectivityRepository());
+    await tester.pumpWidget(
+      FluentApp(
+        home: ScaffoldPage(
+          content: DeviceStatusPage(
+            viewModel: connectivity,
+            bluetoothViewModel: bluetooth,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Office PC'), findsOneWidget);
+    expect(find.text('在线 · 应用配对成功'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    bluetooth.dispose();
+    connectivity.dispose();
+    await tester.pumpWidget(const SizedBox());
+  });
+}
+
+class _TestConnectivityRepository implements ConnectivityRepository {
+  @override
+  Future<ConnectivitySnapshot> check() async => ConnectivitySnapshot(
+    state: ConnectivityState.unknown,
+    checkedAt: DateTime.now(),
+  );
 }
 
 class TestSettingsRepository implements SettingsRepository {
@@ -96,6 +135,8 @@ class TestBluetoothRepository implements BluetoothRepository {
 
   @override
   Future<void> connect(String deviceId) async {}
+  @override
+  Future<void> pairSystemDevice(String deviceId) async {}
 
   @override
   Future<void> disconnect() async {}

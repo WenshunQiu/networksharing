@@ -23,6 +23,8 @@ class PairingViewModel extends ChangeNotifier {
   PairingStatus status = PairingStatus.idle;
   String? message;
   bool isShowingCode = true;
+  bool systemPaired = false;
+  bool get codeReady => pairingCode.isNotEmpty && remaining > Duration.zero;
 
   Duration get remaining {
     final expiry = expiresAt;
@@ -56,10 +58,8 @@ class PairingViewModel extends ChangeNotifier {
     _expiryTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (remaining == Duration.zero) {
         _expiryTimer?.cancel();
-        if (isShowingCode && status != PairingStatus.pairing) {
-          status = PairingStatus.error;
-          message = '配对码已过期，请重新生成。';
-        }
+        status = PairingStatus.error;
+        message = '配对码已过期，请重新生成。';
       }
       notifyListeners();
     });
@@ -70,6 +70,7 @@ class PairingViewModel extends ChangeNotifier {
     if (_disposed || status == PairingStatus.pairing) return;
     enteredCode = value.toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '');
     if (enteredCode.length > 6) enteredCode = enteredCode.substring(0, 6);
+    status = PairingStatus.idle;
     message = null;
     notifyListeners();
   }
@@ -80,6 +81,25 @@ class PairingViewModel extends ChangeNotifier {
     isShowingCode = value;
     status = PairingStatus.idle;
     message = null;
+    notifyListeners();
+  }
+
+  void setSystemPaired(bool value) {
+    if (_disposed) return;
+    systemPaired = value;
+    if (!value) {
+      _operation++;
+      enteredCode = '';
+      status = PairingStatus.idle;
+    }
+    message = value ? 'BLE 通道已连接。请输入电脑显示的应用配对码。' : null;
+    notifyListeners();
+  }
+
+  void setMessage(String? value, {PairingStatus? nextStatus}) {
+    if (_disposed) return;
+    message = value;
+    if (nextStatus != null) status = nextStatus;
     notifyListeners();
   }
 

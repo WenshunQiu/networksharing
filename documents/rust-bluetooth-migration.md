@@ -31,10 +31,16 @@
 
 ## 文件日志
 
-`AppLogger` 在应用支持目录的 `logs/networksharing.log` 追加 UTF-8 JSON Lines，超过 2 MiB 后保留上一份 `.1`，并提供 `flush()` 供后续导出前等待写入。日志记录按钮点击、扫描数量、权限结果、GATT 分片长度、通知订阅及失败阶段。
+`AppLogger` 在应用支持目录的 `logs/networksharing.log` 追加 UTF-8 JSON Lines，超过 2 MiB 后保留上一份 `.1`，并提供 `flush()` 供导出前等待写入。日志记录按钮点击、扫描数量、权限结果、GATT 分片长度、通知订阅及失败阶段。支持目录获取失败时使用系统临时目录，并在设置页显示运行时的实际文件路径。
 
-Windows 通常位于 `%APPDATA%` 下应用支持子目录；Android 位于应用私有支持目录，不会写入公共存储。实际位置以 `AppLogger.instance.filePath` 为准。Android 调试包可使用 `adb shell run-as com.example.networksharing find . -name networksharing.log` 查找，再用 `adb exec-out run-as com.example.networksharing cat <查到的相对路径>` 导出。导出级别选择和系统分享入口留待后续实现。
+Windows 通常位于 `%APPDATA%` 下应用支持子目录；Android 位于应用私有支持目录，不会写入公共存储。可在应用的“设置 > 诊断日志”查看路径，或使用“导出日志”打开系统分享。Android 调试包也可用 `adb shell run-as com.example.networksharing find . -name networksharing.log` 查找。
 
 ## 实机反馈
 
-先用手机广播、电脑扫描，连接后分别发送链路测试消息；再交换角色。反馈失败时间、操作方向、系统版本和两端同一时间段的日志。重点检查首次授权后是否无需再次刷新即可扫描、Windows 是否能开启广播、第二次发送是否仍成功。诊断消息只验证 transport，不代表应用配对认证或热点共享已完成。
+先用手机广播、电脑扫描，连接后分别发送链路测试消息；再交换角色。Central 已连接时写入该连接的对端 GATT 特征；只有没有 Central 连接时，广播端才使用已订阅的 Notify。反馈失败时间、操作方向、系统版本和两端同一时间段的日志。重点检查首次授权后是否无需再次刷新即可扫描、Windows 是否能开启广播、第二次发送是否仍成功。诊断消息只验证 transport，不代表应用配对认证或热点共享已完成。
+
+## 两阶段配对 UX
+
+当前配对流程固定为 Windows Peripheral 广播并显示短期码，Android Central 扫描并连接 Windows，然后提交电脑端显示的码。Windows 不主动扫描手机，也不要求系统 Bluetooth bond。验证码校验与结果返回已走 BLE 控制消息，并记录脱敏认证事件。该 6 位码回环尚非 PAKE/密码学认证，不足以保护热点凭据；敏感数据仍必须保持关闭，直到安全会话密钥、消息完整性及状态机完成。Windows BLE 外设角色是否支持取决于适配器硬件与驱动。
+
+日志入口在设置页“诊断日志”，可查看完整文件路径或导出当前日志及上一轮转文件。Android 使用应用私有目录，Windows 使用 RoamingAppData 下的应用支持目录；路径在运行时显示，不需要用户猜测。

@@ -36,7 +36,10 @@ class _HomeShellState extends State<HomeShell> {
         viewModel: widget.viewModel,
         bluetoothViewModel: widget.bluetooth,
       ),
-      DeviceStatusPage(viewModel: widget.connectivity),
+      DeviceStatusPage(
+        viewModel: widget.connectivity,
+        bluetoothViewModel: widget.bluetooth,
+      ),
       SettingsPage(viewModel: widget.settings),
     ];
     return LayoutBuilder(

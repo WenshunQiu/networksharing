@@ -30,6 +30,16 @@ class AppLogger {
     }
   }
 
+  Future<String> exportableLogText() async {
+    await flush();
+    final current = await _file();
+    final backup = File('${current.path}.1');
+    final parts = <String>[];
+    if (await backup.exists()) parts.add(await backup.readAsString());
+    if (await current.exists()) parts.add(await current.readAsString());
+    return parts.join();
+  }
+
   void debug(
     String component,
     String event, [
@@ -94,7 +104,19 @@ class AppLogger {
   Future<File> _file() => _fileFuture ??= _newFile();
 
   Future<File> _newFile() async {
-    final directory = await _directoryProvider();
+    Directory directory;
+    try {
+      directory = await _directoryProvider();
+    } catch (error) {
+      final fallback = Directory(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}NetworkSharing',
+      );
+      await fallback.create(recursive: true);
+      debugPrint(
+        '[warning] logger.support_path_unavailable ${error.runtimeType}; using temp directory',
+      );
+      directory = fallback;
+    }
     final logDirectory = Directory(
       '${directory.path}${Platform.pathSeparator}logs',
     );

@@ -1,5 +1,13 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
+import 'dart:io';
+
+import 'package:share_plus/share_plus.dart';
+
+import 'dart:typed_data';
+
+import '../../data/app_logger.dart';
+
 import '../../domain/app_settings.dart';
 import 'settings_view_model.dart';
 
@@ -122,6 +130,102 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(vm.saving ? '正在保存…' : '更改后自动保存'),
+                  const SizedBox(height: 28),
+                  const Divider(),
+                  Text(
+                    '诊断日志',
+                    style: FluentTheme.of(context).typography.subtitle,
+                  ),
+                  const SizedBox(height: 8),
+                  FutureBuilder<String?>(
+                    future: AppLogger.instance.filePath,
+                    builder: (context, snapshot) => SelectableText(
+                      snapshot.data ?? '日志路径尚未初始化',
+                      key: const ValueKey('diagnostic-log-path'),
+                    ),
+                  ),
+                  const Text('日志位于应用私有目录，卸载应用会清除。可导出文件并附在问题反馈中。'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Button(
+                        onPressed: () async {
+                          final path = await AppLogger.instance.filePath;
+                          if (!context.mounted) return;
+                          await showDialog<void>(
+                            context: context,
+                            builder: (context) => ContentDialog(
+                              title: const Text('日志文件位置'),
+                              content: SelectableText(path ?? '当前无法创建日志文件'),
+                              actions: [
+                                Button(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('关闭'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        child: const Text('显示日志路径'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () async {
+                          try {
+                            await AppLogger.instance.flush();
+                            final path = await AppLogger.instance.filePath;
+                            if (path == null) {
+                              throw StateError('log_path_unavailable');
+                            }
+                            final current = File(path);
+                            final backup = File('$path.1');
+                            final contents = [
+                              if (await backup.exists())
+                                await backup.readAsBytes(),
+                              if (await current.exists())
+                                await current.readAsBytes(),
+                            ].expand((part) => part).toList(growable: false);
+                            await SharePlus.instance.share(
+                              ShareParams(
+                                files: [
+                                  XFile.fromData(
+                                    Uint8List.fromList(contents),
+                                    name: 'networksharing.log',
+                                    mimeType: 'text/plain',
+                                  ),
+                                ],
+                                fileNameOverrides: const ['networksharing.log'],
+                                title: 'NetworkSharing 诊断日志',
+                              ),
+                            );
+                          } catch (error) {
+                            AppLogger.instance.error(
+                              'ui',
+                              'logs.export_failed',
+                              {'errorType': error.runtimeType.toString()},
+                            );
+                            if (!context.mounted) return;
+                            await showDialog<void>(
+                              context: context,
+                              builder: (context) => ContentDialog(
+                                title: const Text('日志导出失败'),
+                                content: const Text(
+                                  '请使用“显示日志路径”查看文件位置，或稍后重试导出。',
+                                ),
+                                actions: [
+                                  Button(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('关闭'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('导出日志'),
+                      ),
+                    ],
+                  ),
                 ],
               ],
             ),

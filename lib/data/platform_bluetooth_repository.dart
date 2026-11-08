@@ -12,7 +12,7 @@ import '../src/rust/api/bluetooth.dart' as rust_bluetooth;
 
 class PlatformBluetoothRepository implements BluetoothRepository {
   late final controlService = createControlService(
-    includeCccd: defaultTargetPlatform == TargetPlatform.android,
+    includeCccd: defaultTargetPlatform != TargetPlatform.windows,
   );
   final _log = AppLogger.instance;
   static const _channel = MethodChannel('networksharing/bluetooth');
@@ -89,31 +89,53 @@ class PlatformBluetoothRepository implements BluetoothRepository {
     });
     await _prepareManager(_central, 'central');
     final discovered = <String, BluetoothDevice>{};
+    var advertisementCount = 0;
+    var matchingAdvertisementCount = 0;
     _discoveredPeripherals.clear();
-    final subscription = _central.discovered.listen((event) {
-      final id = event.peripheral.uuid.toString();
-      _discoveredPeripherals[id] = event.peripheral;
+    void onFound(ble.Peripheral peripheral, String? rawName, int rssi) {
+      final id = peripheral.uuid.toString();
+      _discoveredPeripherals[id] = peripheral;
+      final name = rawName?.trim();
       discovered[id] = BluetoothDevice(
         id: id,
-        name: event.advertisement.name?.trim().isNotEmpty == true
-            ? event.advertisement.name!.trim()
-            : '未命名蓝牙设备',
+        name: name?.isNotEmpty == true ? name! : '未命名蓝牙设备',
       );
       _log.info('bluetooth', 'scan.device_found', {
-        'namePresent': event.advertisement.name?.trim().isNotEmpty == true,
-        'rssi': event.rssi,
+        'namePresent': name?.isNotEmpty == true,
+        'rssi': rssi,
         'resultCount': discovered.length,
       });
       _discoveryResults.add(discovered.values.toList(growable: false));
+    }
+
+    final subscription = _central.discovered.listen((event) {
+      advertisementCount++;
+      final advertisedServices = {
+        ...event.advertisement.serviceUUIDs,
+        ...event.advertisement.serviceData.keys,
+      };
+      if (!advertisedServices.contains(
+        ble.UUID.fromString(controlServiceUuid),
+      )) {
+        return;
+      }
+      matchingAdvertisementCount++;
+      onFound(event.peripheral, event.advertisement.name, event.rssi);
     });
     try {
       await _central.startDiscovery(
-        serviceUUIDs: [ble.UUID.fromString(controlServiceUuid)],
+        // WinRT can filter the advertisement and scan response separately.
+        // Let the plugin merge them, then require our service UUID above.
+        serviceUUIDs: defaultTargetPlatform == TargetPlatform.windows
+            ? null
+            : [ble.UUID.fromString(controlServiceUuid)],
       );
       _log.info('bluetooth', 'scan.started');
       await Future<void>.delayed(duration);
       _log.info('bluetooth', 'scan.completed', {
         'resultCount': discovered.length,
+        'advertisementCount': advertisementCount,
+        'matchingAdvertisementCount': matchingAdvertisementCount,
       });
     } catch (error) {
       _log.error('bluetooth', 'scan.failed', {'error': _errorCode(error)});
@@ -138,9 +160,16 @@ class PlatformBluetoothRepository implements BluetoothRepository {
   @override
   Future<void> startAdvertising() async {
     _log.info('bluetooth', 'advertising.requested');
+    var stage = 'prepare';
     try {
       await _prepareManager(_peripheral, 'peripheral');
+      if (defaultTargetPlatform == TargetPlatform.windows &&
+          _peripheral.state != ble.BluetoothLowEnergyState.poweredOn) {
+        throw StateError('windows_peripheral_role_unavailable');
+      }
+      stage = 'register_gatt';
       await _peripheral.addService(controlService);
+      _log.info('bluetooth', 'gatt.service_registered');
       await _writeSubscription?.cancel();
       await _notifyStateSubscription?.cancel();
       if (defaultTargetPlatform != TargetPlatform.windows) {
@@ -183,7 +212,13 @@ class PlatformBluetoothRepository implements BluetoothRepository {
             'offset': event.request.offset,
           });
           final message = _peripheralDecoder.add(event.request.value);
-          if (message != null) _messages.add(message);
+          if (message != null) {
+            _log.info('bluetooth', 'gatt.message_reassembled', {
+              'characters': message.length,
+              'role': 'peripheral',
+            });
+            _messages.add(message);
+          }
           await _peripheral.respondWriteRequest(event.request);
         } catch (error) {
           _log.error('bluetooth', 'gatt.write_rejected', {
@@ -195,17 +230,24 @@ class PlatformBluetoothRepository implements BluetoothRepository {
           );
         }
       });
-      await _peripheral.startAdvertising(
-        ble.Advertisement(
-          serviceUUIDs: [ble.UUID.fromString(controlServiceUuid)],
-        ),
-      );
+      stage = 'start_advertising';
+      if (defaultTargetPlatform != TargetPlatform.windows) {
+        await _peripheral.startAdvertising(
+          ble.Advertisement(
+            serviceUUIDs: [ble.UUID.fromString(controlServiceUuid)],
+          ),
+        );
+      }
       _advertising = true;
       _log.info('bluetooth', 'advertising.started');
     } catch (error) {
       _log.error('bluetooth', 'advertising.failed', {
+        'stage': stage,
         'error': _errorCode(error),
       });
+      try {
+        await stopAdvertising();
+      } catch (_) {}
       rethrow;
     }
   }
@@ -213,7 +255,9 @@ class PlatformBluetoothRepository implements BluetoothRepository {
   @override
   Future<void> stopAdvertising() async {
     _log.info('bluetooth', 'advertising.stop_requested');
-    await _peripheral.stopAdvertising();
+    if (defaultTargetPlatform != TargetPlatform.windows) {
+      await _peripheral.stopAdvertising();
+    }
     _advertising = false;
     await _writeSubscription?.cancel();
     _writeSubscription = null;
@@ -290,8 +334,28 @@ class PlatformBluetoothRepository implements BluetoothRepository {
       _log.error('bluetooth', 'connection.failed', {
         'error': _errorCode(error),
       });
+      try {
+        await disconnect();
+      } catch (_) {}
       rethrow;
     }
+  }
+
+  @override
+  Future<void> pairSystemDevice(String deviceId) async {
+    _log.info('bluetooth', 'system_pair.requested');
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      throw StateError('windows_pair_in_settings_then_connect');
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final bonded = await _channel.invokeMethod<bool>('pair', {
+        'deviceId': deviceId,
+      });
+      if (bonded != true) throw StateError('bluetooth_pairing_not_confirmed');
+      _log.info('bluetooth', 'system_pair.completed');
+      return;
+    }
+    throw StateError('bluetooth_system_pairing_unsupported');
   }
 
   @override
@@ -309,6 +373,13 @@ class PlatformBluetoothRepository implements BluetoothRepository {
 
   @override
   Future<void> sendMessage(String message) async {
+    final peripheral = _connectedPeripheral;
+    final characteristic = _remoteCharacteristics[controlWriteUuid];
+    if (peripheral != null && characteristic != null) {
+      _log.info('bluetooth', 'gatt.write_route_selected');
+      await _writeMessage(peripheral, characteristic, message);
+      return;
+    }
     if (_advertising) {
       if (_subscribedCentrals.isEmpty) {
         throw StateError('bluetooth_no_notification_subscriber');
@@ -330,11 +401,14 @@ class PlatformBluetoothRepository implements BluetoothRepository {
       }
       return;
     }
-    final peripheral = _connectedPeripheral;
-    final characteristic = _remoteCharacteristics[controlWriteUuid];
-    if (peripheral == null || characteristic == null) {
-      throw StateError('bluetooth_not_connected');
-    }
+    throw StateError('bluetooth_not_connected');
+  }
+
+  Future<void> _writeMessage(
+    ble.Peripheral peripheral,
+    ble.GATTCharacteristic characteristic,
+    String message,
+  ) async {
     final maxLength = await _central.getMaximumWriteLength(
       peripheral,
       type: ble.GATTCharacteristicWriteType.withResponse,
@@ -361,6 +435,19 @@ class PlatformBluetoothRepository implements BluetoothRepository {
     ble.BluetoothLowEnergyManager manager,
     String role,
   ) async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final state = await _channel.invokeMapMethod<String, dynamic>('prepare');
+      _log.info('bluetooth', 'permission.prepared', {
+        'sdk': state?['sdk'],
+        'locationRequired': state?['locationRequired'],
+        'locationEnabled': state?['locationEnabled'],
+      });
+      if (role == 'central' &&
+          state?['locationRequired'] == true &&
+          state?['locationEnabled'] != true) {
+        throw StateError('bluetooth_location_disabled');
+      }
+    }
     _log.info('bluetooth', 'adapter.check', {
       'role': role,
       'state': manager.state.name,
@@ -413,9 +500,16 @@ class PlatformBluetoothRepository implements BluetoothRepository {
       'bluetooth_not_connected',
       'networksharing_gatt_service_incomplete',
     ]) {
-      if (text.contains(code)) return code;
+      if (text.toLowerCase().contains(code.toLowerCase())) return code;
     }
-    return error.runtimeType.toString();
+    final safeText = text.replaceAll(
+      RegExp(
+        r'(pairing code|password|ssid|passphrase)\s*[:=]\s*[^,\s}]+',
+        caseSensitive: false,
+      ),
+      r'$1=[redacted]',
+    );
+    return '${error.runtimeType}: ${safeText.substring(0, safeText.length.clamp(0, 320))}';
   }
 
   Future<ble.BluetoothLowEnergyState> _waitForState(

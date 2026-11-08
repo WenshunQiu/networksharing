@@ -35,6 +35,20 @@
 - Shizuku/Root Provider 及权限引导。
 - Rust 已承载配对会话、消息封套、重放检查和进程内共享状态机；尚未接入真实热点 Provider。
 
+## 后台能力与扩展路线（2026-11-08）
+
+- Windows runner 在窗口最小化或点击关闭时隐藏主窗口并保留托盘图标；托盘左键恢复，右键菜单可恢复或退出。托盘只维持桌面进程，不等同于 Windows 服务或登录自启；应用退出后 BLE 广播/连接结束。
+- Android 在 BLE 广播或 Central 连接期间由 Flutter 前台发起 connectedDevice 前台服务，显示常驻通知；连接/广播都结束后停止服务。系统通知权限受 Android 13+ 控制；若通知被禁用，需在实机核实目标系统对服务启动的处理。服务用于保活承载进程，当前 BLE 插件是否在 Activity 暂停、Doze 和厂商省电策略下保持 GATT，仍需实机验证。
+- “设备状态”中的当前设备使用独立磁贴展示在线/等待状态和应用配对结果；“管理权限”跳转至 Android 应用权限页或 Windows 蓝牙设置。Windows 手机名称尚未由后端提供，因此仅展示通用设备名。
+- 当前仍为单一活动 BLE peer，不能同时管理多个设备或独立权限。多设备后续方案：将单个 connectedDeviceId 与全局 applicationPaired 演进为 DeviceSession 集合，按稳定设备身份保存认证状态、在线状态、能力/授权范围、最近连接时间和会话 revision；每台设备独立断连、撤销权限与重连，热点共享状态仍以单个活动网络会话协调冲突。广播发现、设备配对存储、并发 GATT 限制与 UI 列表作为独立阶段评审，本轮不实施。
+
+## 2026-11-08 实机反馈修正
+
+- 配对首页改为发现设备 -> 系统蓝牙配对 -> GATT 连接 -> 应用配对码界面。Android 发起系统 bond 并等待 bond state；Windows 引导用户在系统设置完成蓝牙配对。应用码握手仍是占位接口；当前不会将输入码成功报告成认证成功或开放敏感数据。Windows Peripheral 支持依赖适配器与驱动。
+- Central 连接存在时，发送固定通过对端 GATT write 特征；只有无 Central 连接时才使用本机 Peripheral notify，修复本机同时广播和连接时错误走通知路径、二次发送因无订阅者失败的问题。发送按钮在发送过程中置为忙态。
+- 设置页显示日志文件绝对路径并可导出当前日志与轮转日志；支持目录不可用时回退到临时目录。错误记录保留截断后的平台异常详情。
+- 更新后验证：Flutter 33 项测试、Rust 5 项测试通过；Android Debug APK 与 Windows Debug 构建通过。两设备连接、广播和配对仍待现场复测。
+
 ## 验证命令
 
 在项目根目录执行：
@@ -59,6 +73,8 @@ BLE 应用接入阶段：30 项 Flutter 测试通过，Dart 静态分析无问�
 下一步验证 Android/Windows 可互通的蓝牙 transport，并完成配对认证方案。Rust 的协议模型和状态处理继续由 FRB 暴露；平台系统 API 可封装为 Rust transport backend。配对码不能直接用作加密密钥。后台服务必须独立于 Flutter 页面生命周期；热点和特权适配器按能力检测逐步接入。
 
 ## debug 分支：诊断基线
+
+最新实机问题、权限版本划分、修复范围与单向配对流程见 [ble-device-feedback.md](ble-device-feedback.md)。应用层验证码回环已接入，但尚未完成密码学安全握手；热点凭据等敏感数据仍不得通过当前链路发送。
 
 新增结构化 JSONL 文件日志、2 MiB 轮转和排队刷新接口；修复 BLE 初始化等待、Windows Peripheral 不支持的连接事件订阅、CCCD 和订阅者检查。扫描结果实时更新。当前 32 项 Flutter 测试、5 项 Rust 测试和 Dart 静态分析通过。当前 transport 仍为 Flutter BLE 插件，后续分阶段迁移到 Rust。
 

@@ -32,6 +32,8 @@ class PendingBluetoothRepository implements BluetoothRepository {
   @override
   Future<void> connect(String deviceId) async {}
   @override
+  Future<void> pairSystemDevice(String deviceId) async {}
+  @override
   Future<void> disconnect() async {}
   @override
   Future<void> sendMessage(String message) async {}
@@ -45,6 +47,7 @@ class FakeBluetoothRepository implements BluetoothRepository {
   String? connectedId;
   bool isAdvertising = false;
   String? sentMessage;
+  final sentMessages = <String>[];
   Completer<List<BluetoothDevice>>? pendingScan;
 
   @override
@@ -61,9 +64,15 @@ class FakeBluetoothRepository implements BluetoothRepository {
   @override
   Future<void> connect(String deviceId) async => connectedId = deviceId;
   @override
+  Future<void> pairSystemDevice(String deviceId) async {}
+  @override
   Future<void> disconnect() async => connectedId = null;
   @override
-  Future<void> sendMessage(String message) async => sentMessage = message;
+  Future<void> sendMessage(String message) async {
+    sentMessage = message;
+    sentMessages.add(message);
+  }
+
   @override
   Stream<String> get messages => controller.stream;
   @override
@@ -121,6 +130,11 @@ void main() {
       expect(vm.discoveredDevices.single.id, 'peer');
       await vm.connect(vm.discoveredDevices.single);
       expect(vm.connectedDeviceId, 'peer');
+      expect(
+        vm.systemPairedDeviceIds,
+        isEmpty,
+        reason: 'A GATT connection must not imply a system Bluetooth bond',
+      );
       await vm.sendDiagnosticMessage();
       expect(repository.sentMessage, startsWith('transport-check:'));
       repository.controller.add('reply');
@@ -133,6 +147,82 @@ void main() {
       await repository.discoveryController.close();
     },
   );
+
+  test(
+    'pairing code authentication succeeds and rejects an incorrect code',
+    () async {
+      final repository = FakeBluetoothRepository();
+      final vm = BluetoothViewModel(repository);
+      vm.connectedDeviceId = 'computer';
+      vm.setDisplayedPairingCode('ABC234');
+
+      final correct = vm.authenticatePairingCode('ABC234');
+      await Future<void>.delayed(Duration.zero);
+      repository.controller.add(
+        '{"type":"pairing_auth_result","success":true}',
+      );
+      expect(await correct, isTrue);
+      expect(vm.applicationPaired, isTrue);
+      expect(repository.sentMessages, hasLength(1));
+
+      vm.applicationPaired = false;
+      final incorrect = vm.authenticatePairingCode('WRONG2');
+      await Future<void>.delayed(Duration.zero);
+      repository.controller.add(
+        '{"type":"pairing_auth_result","success":false}',
+      );
+      expect(await incorrect, isFalse);
+      expect(vm.applicationPaired, isFalse);
+      expect(repository.sentMessages, hasLength(2));
+
+      vm.dispose();
+      await repository.controller.close();
+      await repository.discoveryController.close();
+    },
+  );
+
+  test('Windows accepts only its current displayed pairing code', () async {
+    final repository = FakeBluetoothRepository();
+    final vm = BluetoothViewModel(repository);
+    vm.setDisplayedPairingCode('ABC234');
+    vm.connecting = false;
+    await vm.setAdvertising(true);
+
+    repository.controller.add(
+      '{"type":"pairing_auth_request","code":"WRONG2"}',
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(vm.applicationPaired, isFalse);
+    expect(
+      repository.sentMessage,
+      '{"type":"pairing_auth_result","success":false}',
+    );
+
+    repository.controller.add(
+      '{"type":"pairing_auth_request","code":"ABC234"}',
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(vm.applicationPaired, isTrue);
+    expect(
+      repository.sentMessage,
+      '{"type":"pairing_auth_result","success":true}',
+    );
+
+    vm.setDisplayedPairingCode(null);
+    expect(vm.applicationPaired, isFalse);
+    repository.controller.add(
+      '{"type":"pairing_auth_request","code":"ABC234"}',
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(vm.applicationPaired, isFalse);
+    expect(
+      repository.sentMessage,
+      '{"type":"pairing_auth_result","success":false}',
+    );
+    vm.dispose();
+    await repository.controller.close();
+    await repository.discoveryController.close();
+  });
 
   test('scan shows discoveries before the scan duration completes', () async {
     final repository = FakeBluetoothRepository()..pendingScan = Completer();

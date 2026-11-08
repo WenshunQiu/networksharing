@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'bluetooth_repository.dart';
 import '../../data/app_logger.dart';
@@ -14,7 +16,14 @@ class BluetoothViewModel extends ChangeNotifier {
   bool scanning = false;
   bool advertising = false;
   bool connecting = false;
+  bool pairingSystem = false;
+  final Set<String> systemPairedDeviceIds = {};
+  bool diagnosticSending = false;
+  bool applicationPaired = false;
+  String? _displayedPairingCode;
+  Completer<bool>? _pairingResult;
   String? connectedDeviceId;
+  String? diagnosticReceivedAt;
   String? transportError;
   String? lastMessage;
   StreamSubscription<String>? _messageSubscription;
@@ -23,6 +32,16 @@ class BluetoothViewModel extends ChangeNotifier {
   bool _disposed = false;
   int _operation = 0;
   final _log = AppLogger.instance;
+  static const _platformChannel = MethodChannel('networksharing/bluetooth');
+
+  BluetoothDevice? get connectedDevice {
+    final id = connectedDeviceId;
+    if (id == null) return null;
+    for (final device in discoveredDevices) {
+      if (device.id == id) return device;
+    }
+    return null;
+  }
 
   Future<void> inspect() async {
     if (_disposed || checking) return;
@@ -88,11 +107,20 @@ class BluetoothViewModel extends ChangeNotifier {
     if (text.contains('permission_denied')) {
       return '蓝牙权限被拒绝，请在系统设置中允许“附近设备”。';
     }
+    if (text.contains('location_disabled')) {
+      return 'Android 11 及以下扫描蓝牙需要开启系统定位服务，请开启定位后重试。';
+    }
     if (text.contains('powered_off')) return '蓝牙已关闭，请先在系统设置中开启。';
     if (text.contains('state_timeout')) {
       return '蓝牙初始化超时，请确认适配器可用后重试。';
     }
     if (text.contains('unsupported')) return '此设备不支持 BLE。';
+    if (text.contains('windows_peripheral_role_unavailable')) {
+      return '此电脑的蓝牙适配器不支持 Peripheral/GATT 广播角色，无法被另一端发现。';
+    }
+    if (text.contains('windows_pair_in_settings_then_connect')) {
+      return '请先在 Windows“设置 > 蓝牙和设备”中与目标手机完成系统蓝牙配对，再返回此处扫描连接。';
+    }
     return '蓝牙操作失败，请确认蓝牙已开启并允许权限后重试。';
   }
 
@@ -105,14 +133,15 @@ class BluetoothViewModel extends ChangeNotifier {
         await _repository.startAdvertising();
         advertising = true;
         _listenForMessages();
+        await _setBackgroundTransport(true);
       } else {
         await _repository.stopAdvertising();
         advertising = false;
+        if (connectedDeviceId == null) await _setBackgroundTransport(false);
       }
     } catch (error) {
-      _log.error('bluetooth', 'advertising.viewmodel_failed', {
-        'errorType': error.runtimeType.toString(),
-      });
+      final code = _diagnosticError(error);
+      _log.error('bluetooth', 'advertising.viewmodel_failed', {'error': code});
       transportError = _bluetoothErrorMessage(error);
     }
     if (!_disposed) notifyListeners();
@@ -129,9 +158,10 @@ class BluetoothViewModel extends ChangeNotifier {
       if (_disposed) return;
       connectedDeviceId = device.id;
       _listenForMessages();
+      await _setBackgroundTransport(true);
     } catch (error) {
       _log.error('bluetooth', 'connect.viewmodel_failed', {
-        'errorType': error.runtimeType.toString(),
+        'error': _diagnosticError(error),
       });
       if (!_disposed) {
         transportError = '连接设备失败：${_bluetoothErrorMessage(error)}';
@@ -144,22 +174,145 @@ class BluetoothViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> pairSystemDevice(BluetoothDevice device) async {
+    if (_disposed || pairingSystem) return;
+    _log.info('ui', 'bluetooth.system_pair_clicked');
+    pairingSystem = true;
+    transportError = null;
+    notifyListeners();
+    try {
+      await _repository.pairSystemDevice(device.id);
+      systemPairedDeviceIds.add(device.id);
+      transportError = '系统蓝牙配对完成。现在可通过 BLE 连接并验证应用配对码。';
+      _log.info('bluetooth', 'system_pair.completed');
+    } catch (error) {
+      _log.error('bluetooth', 'system_pair.failed', {
+        'error': _diagnosticError(error),
+      });
+      transportError = '系统蓝牙配对失败：${_bluetoothErrorMessage(error)}';
+    } finally {
+      pairingSystem = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   Future<void> disconnect() async {
     if (_disposed) return;
     _log.info('ui', 'bluetooth.disconnect_clicked');
     try {
       await _repository.disconnect();
       connectedDeviceId = null;
+      applicationPaired = false;
       lastMessage = null;
+      if (!advertising) await _setBackgroundTransport(false);
     } catch (_) {
       transportError = '断开 BLE 连接失败。';
     }
+    _displayedPairingCode = null;
+    applicationPaired = false;
     if (!_disposed) notifyListeners();
   }
 
+  Future<void> _setBackgroundTransport(bool enabled) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _platformChannel.invokeMethod<bool>('setBackgroundTransport', {
+        'enabled': enabled,
+      });
+      _log.info('bluetooth', 'background_transport.updated', {
+        'enabled': enabled,
+      });
+    } catch (error) {
+      _log.error('bluetooth', 'background_transport.failed', {
+        'enabled': enabled,
+        'errorType': error.runtimeType.toString(),
+      });
+      transportError = '后台蓝牙服务无法启动，请检查通知和附近设备权限。';
+    }
+  }
+
+  void setDisplayedPairingCode(String? code) {
+    if (_displayedPairingCode != code) applicationPaired = false;
+    _displayedPairingCode = code;
+  }
+
+  Future<bool> authenticatePairingCode(String code) async {
+    if (_disposed || connectedDeviceId == null || _pairingResult != null) {
+      return false;
+    }
+    final result = Completer<bool>();
+    _pairingResult = result;
+    _listenForMessages();
+    _log.info('pairing', 'authentication.requested', {
+      'codeLength': code.length,
+    });
+    try {
+      await _repository.sendMessage(
+        jsonEncode({'type': 'pairing_auth_request', 'code': code}),
+      );
+      final success = await result.future.timeout(const Duration(seconds: 15));
+      applicationPaired = success;
+      _log.info(
+        'pairing',
+        success ? 'authentication.accepted' : 'authentication.rejected',
+      );
+      notifyListeners();
+      return success;
+    } on TimeoutException {
+      _log.warning('pairing', 'authentication.timeout');
+      return false;
+    } catch (error) {
+      _log.error('pairing', 'authentication.failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+      return false;
+    } finally {
+      if (identical(_pairingResult, result)) _pairingResult = null;
+    }
+  }
+
+  Future<void> _handleProtocolMessage(String message) async {
+    if (!message.startsWith('{')) return;
+    try {
+      final decoded = jsonDecode(message);
+      if (decoded is! Map<String, dynamic>) return;
+      if (decoded['type'] == 'pairing_auth_request') {
+        final code = decoded['code'];
+        final accepted =
+            code is String &&
+            RegExp(r'^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$').hasMatch(code) &&
+            _displayedPairingCode != null &&
+            code == _displayedPairingCode;
+        _log.info(
+          'pairing',
+          accepted ? 'authentication.accepted' : 'authentication.rejected',
+        );
+        if (accepted) applicationPaired = true;
+        await _repository.sendMessage(
+          jsonEncode({'type': 'pairing_auth_result', 'success': accepted}),
+        );
+        notifyListeners();
+      } else if (decoded['type'] == 'pairing_auth_result') {
+        if (!(_pairingResult?.isCompleted ?? true)) {
+          _pairingResult!.complete(decoded['success'] == true);
+        }
+      }
+    } catch (error) {
+      _log.warning('pairing', 'authentication.message_invalid', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
+  }
+
   Future<void> sendDiagnosticMessage() async {
-    if (_disposed || (connectedDeviceId == null && !advertising)) return;
+    if (_disposed ||
+        diagnosticSending ||
+        (connectedDeviceId == null && !advertising)) {
+      return;
+    }
+    diagnosticSending = true;
     _log.info('ui', 'bluetooth.diagnostic_send_clicked');
+    notifyListeners();
     final message =
         'transport-check:${DateTime.now().toUtc().toIso8601String()}';
     try {
@@ -167,19 +320,30 @@ class BluetoothViewModel extends ChangeNotifier {
       transportError = null;
     } catch (error) {
       _log.error('bluetooth', 'diagnostic_send.failed', {
-        'errorType': error.runtimeType.toString(),
+        'error': _diagnosticError(error),
       });
       final text = error.toString();
       transportError = text.contains('no_notification_subscriber')
           ? '当前没有订阅通知的对端，请确认对端已连接并重新订阅。'
-          : '消息发送失败：${_bluetoothErrorMessage(error)}';
+          : '消息发送失败（${_diagnosticError(error)}）：${_bluetoothErrorMessage(error)}';
     }
+    diagnosticSending = false;
     if (!_disposed) notifyListeners();
+  }
+
+  String _diagnosticError(Object error) {
+    final text = error.toString();
+    return text.length > 320 ? text.substring(0, 320) : text;
   }
 
   void _listenForMessages() {
     _messageSubscription ??= _repository.messages.listen(
       (message) {
+        unawaited(_handleProtocolMessage(message));
+        if (message.startsWith('transport-check:')) {
+          diagnosticReceivedAt = DateTime.now().toLocal().toString();
+          _log.info('bluetooth', 'diagnostic.received');
+        }
         lastMessage = message;
         if (!_disposed) notifyListeners();
       },
@@ -196,6 +360,7 @@ class BluetoothViewModel extends ChangeNotifier {
     _operation++;
     _messageSubscription?.cancel();
     _discoverySubscription?.cancel();
+    if (!(_pairingResult?.isCompleted ?? true)) _pairingResult!.complete(false);
     super.dispose();
   }
 }
