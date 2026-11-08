@@ -3,7 +3,9 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/bluetooth.dart';
 import 'api/pairing.dart';
+import 'api/sharing.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -67,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -10329455;
+  int get rustContentHash => -1446994326;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -98,6 +100,25 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiPairingEncodePairingEnvelope({
     required PairingEnvelope message,
+  });
+
+  Future<ShareSession?> crateApiSharingGetShareSession({
+    required String sessionId,
+  });
+
+  Future<BluetoothSnapshot> crateApiBluetoothInspectWindowsBluetooth();
+
+  Future<ShareSession> crateApiSharingRequestShare({
+    required String requesterDeviceId,
+    required String providerDeviceId,
+    required ShareDirection direction,
+  });
+
+  Future<ShareTransitionResult> crateApiSharingTransitionShareSession({
+    required String sessionId,
+    required BigInt expectedRevision,
+    required ShareSessionState nextState,
+    String? errorCode,
   });
 }
 
@@ -274,10 +295,176 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         argNames: ["message"],
       );
 
+  @override
+  Future<ShareSession?> crateApiSharingGetShareSession({
+    required String sessionId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_share_session,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSharingGetShareSessionConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharingGetShareSessionConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_share_session",
+        argNames: ["sessionId"],
+      );
+
+  @override
+  Future<BluetoothSnapshot> crateApiBluetoothInspectWindowsBluetooth() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bluetooth_snapshot,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiBluetoothInspectWindowsBluetoothConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBluetoothInspectWindowsBluetoothConstMeta =>
+      const TaskConstMeta(debugName: "inspect_windows_bluetooth", argNames: []);
+
+  @override
+  Future<ShareSession> crateApiSharingRequestShare({
+    required String requesterDeviceId,
+    required String providerDeviceId,
+    required ShareDirection direction,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(requesterDeviceId, serializer);
+          sse_encode_String(providerDeviceId, serializer);
+          sse_encode_share_direction(direction, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_session,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSharingRequestShareConstMeta,
+        argValues: [requesterDeviceId, providerDeviceId, direction],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharingRequestShareConstMeta =>
+      const TaskConstMeta(
+        debugName: "request_share",
+        argNames: ["requesterDeviceId", "providerDeviceId", "direction"],
+      );
+
+  @override
+  Future<ShareTransitionResult> crateApiSharingTransitionShareSession({
+    required String sessionId,
+    required BigInt expectedRevision,
+    required ShareSessionState nextState,
+    String? errorCode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(sessionId, serializer);
+          sse_encode_u_64(expectedRevision, serializer);
+          sse_encode_share_session_state(nextState, serializer);
+          sse_encode_opt_String(errorCode, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_transition_result,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSharingTransitionShareSessionConstMeta,
+        argValues: [sessionId, expectedRevision, nextState, errorCode],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharingTransitionShareSessionConstMeta =>
+      const TaskConstMeta(
+        debugName: "transition_share_session",
+        argNames: ["sessionId", "expectedRevision", "nextState", "errorCode"],
+      );
+
   @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  BluetoothAvailability dco_decode_bluetooth_availability(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return BluetoothAvailability.values[raw as int];
+  }
+
+  @protected
+  BluetoothPeer dco_decode_bluetooth_peer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return BluetoothPeer(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  BluetoothSnapshot dco_decode_bluetooth_snapshot(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return BluetoothSnapshot(
+      availability: dco_decode_bluetooth_availability(arr[0]),
+      devices: dco_decode_list_bluetooth_peer(arr[1]),
+    );
   }
 
   @protected
@@ -293,9 +480,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ShareSession dco_decode_box_autoadd_share_session(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_share_session(raw);
+  }
+
+  @protected
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  List<BluetoothPeer> dco_decode_list_bluetooth_peer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_bluetooth_peer).toList();
   }
 
   @protected
@@ -308,6 +507,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  ShareSession? dco_decode_opt_box_autoadd_share_session(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_share_session(raw);
   }
 
   @protected
@@ -366,6 +571,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ShareDirection dco_decode_share_direction(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ShareDirection.values[raw as int];
+  }
+
+  @protected
+  ShareSession dco_decode_share_session(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return ShareSession(
+      sessionId: dco_decode_String(arr[0]),
+      requesterDeviceId: dco_decode_String(arr[1]),
+      providerDeviceId: dco_decode_String(arr[2]),
+      direction: dco_decode_share_direction(arr[3]),
+      state: dco_decode_share_session_state(arr[4]),
+      revision: dco_decode_u_64(arr[5]),
+      lastError: dco_decode_opt_String(arr[6]),
+    );
+  }
+
+  @protected
+  ShareSessionState dco_decode_share_session_state(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ShareSessionState.values[raw as int];
+  }
+
+  @protected
+  ShareTransitionResult dco_decode_share_transition_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ShareTransitionResult(
+      accepted: dco_decode_bool(arr[0]),
+      errorCode: dco_decode_opt_String(arr[1]),
+      session: dco_decode_opt_box_autoadd_share_session(arr[2]),
+    );
+  }
+
+  @protected
   int dco_decode_u_16(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -397,6 +644,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BluetoothAvailability sse_decode_bluetooth_availability(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return BluetoothAvailability.values[inner];
+  }
+
+  @protected
+  BluetoothPeer sse_decode_bluetooth_peer(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    return BluetoothPeer(id: var_id, name: var_name);
+  }
+
+  @protected
+  BluetoothSnapshot sse_decode_bluetooth_snapshot(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_availability = sse_decode_bluetooth_availability(deserializer);
+    var var_devices = sse_decode_list_bluetooth_peer(deserializer);
+    return BluetoothSnapshot(
+      availability: var_availability,
+      devices: var_devices,
+    );
+  }
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
@@ -411,9 +688,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ShareSession sse_decode_box_autoadd_share_session(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_share_session(deserializer));
+  }
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  List<BluetoothPeer> sse_decode_list_bluetooth_peer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <BluetoothPeer>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_bluetooth_peer(deserializer));
+    }
+    return ans_;
   }
 
   @protected
@@ -429,6 +728,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  ShareSession? sse_decode_opt_box_autoadd_share_session(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_share_session(deserializer));
     } else {
       return null;
     }
@@ -497,6 +809,58 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ShareDirection sse_decode_share_direction(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ShareDirection.values[inner];
+  }
+
+  @protected
+  ShareSession sse_decode_share_session(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_sessionId = sse_decode_String(deserializer);
+    var var_requesterDeviceId = sse_decode_String(deserializer);
+    var var_providerDeviceId = sse_decode_String(deserializer);
+    var var_direction = sse_decode_share_direction(deserializer);
+    var var_state = sse_decode_share_session_state(deserializer);
+    var var_revision = sse_decode_u_64(deserializer);
+    var var_lastError = sse_decode_opt_String(deserializer);
+    return ShareSession(
+      sessionId: var_sessionId,
+      requesterDeviceId: var_requesterDeviceId,
+      providerDeviceId: var_providerDeviceId,
+      direction: var_direction,
+      state: var_state,
+      revision: var_revision,
+      lastError: var_lastError,
+    );
+  }
+
+  @protected
+  ShareSessionState sse_decode_share_session_state(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ShareSessionState.values[inner];
+  }
+
+  @protected
+  ShareTransitionResult sse_decode_share_transition_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_accepted = sse_decode_bool(deserializer);
+    var var_errorCode = sse_decode_opt_String(deserializer);
+    var var_session = sse_decode_opt_box_autoadd_share_session(deserializer);
+    return ShareTransitionResult(
+      accepted: var_accepted,
+      errorCode: var_errorCode,
+      session: var_session,
+    );
+  }
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint16();
@@ -526,6 +890,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_bluetooth_availability(
+    BluetoothAvailability self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_bluetooth_peer(BluetoothPeer self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+  }
+
+  @protected
+  void sse_encode_bluetooth_snapshot(
+    BluetoothSnapshot self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bluetooth_availability(self.availability, serializer);
+    sse_encode_list_bluetooth_peer(self.devices, serializer);
+  }
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
@@ -541,9 +931,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_share_session(
+    ShareSession self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_share_session(self, serializer);
+  }
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_list_bluetooth_peer(
+    List<BluetoothPeer> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_bluetooth_peer(item, serializer);
+    }
   }
 
   @protected
@@ -563,6 +974,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_share_session(
+    ShareSession? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_share_session(self, serializer);
     }
   }
 
@@ -619,6 +1043,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.accepted, serializer);
     sse_encode_opt_String(self.errorCode, serializer);
+  }
+
+  @protected
+  void sse_encode_share_direction(
+    ShareDirection self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_share_session(ShareSession self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.sessionId, serializer);
+    sse_encode_String(self.requesterDeviceId, serializer);
+    sse_encode_String(self.providerDeviceId, serializer);
+    sse_encode_share_direction(self.direction, serializer);
+    sse_encode_share_session_state(self.state, serializer);
+    sse_encode_u_64(self.revision, serializer);
+    sse_encode_opt_String(self.lastError, serializer);
+  }
+
+  @protected
+  void sse_encode_share_session_state(
+    ShareSessionState self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_share_transition_result(
+    ShareTransitionResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.accepted, serializer);
+    sse_encode_opt_String(self.errorCode, serializer);
+    sse_encode_opt_box_autoadd_share_session(self.session, serializer);
   }
 
   @protected

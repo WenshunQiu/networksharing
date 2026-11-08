@@ -6,7 +6,9 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'api/bluetooth.dart';
 import 'api/pairing.dart';
+import 'api/sharing.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -27,19 +29,37 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  BluetoothAvailability dco_decode_bluetooth_availability(dynamic raw);
+
+  @protected
+  BluetoothPeer dco_decode_bluetooth_peer(dynamic raw);
+
+  @protected
+  BluetoothSnapshot dco_decode_bluetooth_snapshot(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
   PairingEnvelope dco_decode_box_autoadd_pairing_envelope(dynamic raw);
 
   @protected
+  ShareSession dco_decode_box_autoadd_share_session(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
+
+  @protected
+  List<BluetoothPeer> dco_decode_list_bluetooth_peer(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  ShareSession? dco_decode_opt_box_autoadd_share_session(dynamic raw);
 
   @protected
   PairingEnvelope dco_decode_pairing_envelope(dynamic raw);
@@ -57,6 +77,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProtocolResult dco_decode_protocol_result(dynamic raw);
 
   @protected
+  ShareDirection dco_decode_share_direction(dynamic raw);
+
+  @protected
+  ShareSession dco_decode_share_session(dynamic raw);
+
+  @protected
+  ShareSessionState dco_decode_share_session_state(dynamic raw);
+
+  @protected
+  ShareTransitionResult dco_decode_share_transition_result(dynamic raw);
+
+  @protected
   int dco_decode_u_16(dynamic raw);
 
   @protected
@@ -72,6 +104,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  BluetoothAvailability sse_decode_bluetooth_availability(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BluetoothPeer sse_decode_bluetooth_peer(SseDeserializer deserializer);
+
+  @protected
+  BluetoothSnapshot sse_decode_bluetooth_snapshot(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -80,13 +123,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ShareSession sse_decode_box_autoadd_share_session(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
+  List<BluetoothPeer> sse_decode_list_bluetooth_peer(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  ShareSession? sse_decode_opt_box_autoadd_share_session(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PairingEnvelope sse_decode_pairing_envelope(SseDeserializer deserializer);
@@ -108,6 +166,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProtocolResult sse_decode_protocol_result(SseDeserializer deserializer);
 
   @protected
+  ShareDirection sse_decode_share_direction(SseDeserializer deserializer);
+
+  @protected
+  ShareSession sse_decode_share_session(SseDeserializer deserializer);
+
+  @protected
+  ShareSessionState sse_decode_share_session_state(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ShareTransitionResult sse_decode_share_transition_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
@@ -123,6 +197,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_bluetooth_availability(
+    BluetoothAvailability self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_bluetooth_peer(BluetoothPeer self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bluetooth_snapshot(
+    BluetoothSnapshot self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -132,7 +221,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_share_session(
+    ShareSession self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_bluetooth_peer(
+    List<BluetoothPeer> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -142,6 +243,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_share_session(
+    ShareSession? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_pairing_envelope(
@@ -170,6 +277,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_protocol_result(
     ProtocolResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_share_direction(
+    ShareDirection self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_share_session(ShareSession self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_share_session_state(
+    ShareSessionState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_share_transition_result(
+    ShareTransitionResult self,
     SseSerializer serializer,
   );
 

@@ -39,7 +39,7 @@ ViewModel 不得直接调用 MethodChannel、原生 API、Rust 生成绑定或�
 首批接口建议包含：
 
 - `PairingRepository`：创建配对会话、验证码、保存/撤销可信设备、重连。
-- `ControlChannel`：发现、连接、认证会话、发送/接收版本化消息。
+- `ControlChannel`：发现、连接、认证会话、发送/接收版本化消息。首期 Bluetooth LE/GATT 或经典蓝牙承载须经 Windows 与 Android 实机互通验证后定型。
 - `ConnectivityMonitor`：流式报告可用/不可用/未知及变化时间。
 - `HotspotProvider`：报告能力并启动、读取配置、停止本机热点。
 - `WifiJoinProvider`：报告能力、加入热点、验证目标网络可用性、断开。

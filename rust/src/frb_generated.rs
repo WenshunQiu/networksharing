@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -10329455;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1446994326;
 
 // Section: executor
 
@@ -221,6 +221,155 @@ fn wire__crate__api__pairing__encode_pairing_envelope_impl(
         },
     )
 }
+fn wire__crate__api__sharing__get_share_session_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_share_session",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Ok::<_, ()>(crate::api::sharing::get_share_session(api_session_id))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__bluetooth__inspect_windows_bluetooth_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "inspect_windows_bluetooth",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Ok::<_, ()>(crate::api::bluetooth::inspect_windows_bluetooth())?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__sharing__request_share_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "request_share",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_requester_device_id = <String>::sse_decode(&mut deserializer);
+            let api_provider_device_id = <String>::sse_decode(&mut deserializer);
+            let api_direction =
+                <crate::api::sharing::ShareDirection>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::sharing::request_share(
+                        api_requester_device_id,
+                        api_provider_device_id,
+                        api_direction,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__sharing__transition_share_session_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "transition_share_session",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_session_id = <String>::sse_decode(&mut deserializer);
+            let api_expected_revision = <u64>::sse_decode(&mut deserializer);
+            let api_next_state =
+                <crate::api::sharing::ShareSessionState>::sse_decode(&mut deserializer);
+            let api_error_code = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::sharing::transition_share_session(
+                        api_session_id,
+                        api_expected_revision,
+                        api_next_state,
+                        api_error_code,
+                    ))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 
 // Section: dart2rust
 
@@ -229,6 +378,46 @@ impl SseDecode for String {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <Vec<u8>>::sse_decode(deserializer);
         return String::from_utf8(inner).unwrap();
+    }
+}
+
+impl SseDecode for crate::api::bluetooth::BluetoothAvailability {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::bluetooth::BluetoothAvailability::Ready,
+            1 => crate::api::bluetooth::BluetoothAvailability::PoweredOff,
+            2 => crate::api::bluetooth::BluetoothAvailability::Unavailable,
+            3 => crate::api::bluetooth::BluetoothAvailability::PermissionDenied,
+            4 => crate::api::bluetooth::BluetoothAvailability::Failed,
+            _ => unreachable!("Invalid variant for BluetoothAvailability: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::bluetooth::BluetoothPeer {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        return crate::api::bluetooth::BluetoothPeer {
+            id: var_id,
+            name: var_name,
+        };
+    }
+}
+
+impl SseDecode for crate::api::bluetooth::BluetoothSnapshot {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_availability =
+            <crate::api::bluetooth::BluetoothAvailability>::sse_decode(deserializer);
+        let mut var_devices = <Vec<crate::api::bluetooth::BluetoothPeer>>::sse_decode(deserializer);
+        return crate::api::bluetooth::BluetoothSnapshot {
+            availability: var_availability,
+            devices: var_devices,
+        };
     }
 }
 
@@ -243,6 +432,20 @@ impl SseDecode for i32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_i32::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for Vec<crate::api::bluetooth::BluetoothPeer> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::bluetooth::BluetoothPeer>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
     }
 }
 
@@ -263,6 +466,19 @@ impl SseDecode for Option<String> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::sharing::ShareSession> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::sharing::ShareSession>::sse_decode(
+                deserializer,
+            ));
         } else {
             return None;
         }
@@ -350,6 +566,74 @@ impl SseDecode for crate::api::pairing::ProtocolResult {
     }
 }
 
+impl SseDecode for crate::api::sharing::ShareDirection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::sharing::ShareDirection::PhoneProvides,
+            1 => crate::api::sharing::ShareDirection::ComputerProvides,
+            _ => unreachable!("Invalid variant for ShareDirection: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::sharing::ShareSession {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_sessionId = <String>::sse_decode(deserializer);
+        let mut var_requesterDeviceId = <String>::sse_decode(deserializer);
+        let mut var_providerDeviceId = <String>::sse_decode(deserializer);
+        let mut var_direction = <crate::api::sharing::ShareDirection>::sse_decode(deserializer);
+        let mut var_state = <crate::api::sharing::ShareSessionState>::sse_decode(deserializer);
+        let mut var_revision = <u64>::sse_decode(deserializer);
+        let mut var_lastError = <Option<String>>::sse_decode(deserializer);
+        return crate::api::sharing::ShareSession {
+            session_id: var_sessionId,
+            requester_device_id: var_requesterDeviceId,
+            provider_device_id: var_providerDeviceId,
+            direction: var_direction,
+            state: var_state,
+            revision: var_revision,
+            last_error: var_lastError,
+        };
+    }
+}
+
+impl SseDecode for crate::api::sharing::ShareSessionState {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::sharing::ShareSessionState::AwaitingApproval,
+            1 => crate::api::sharing::ShareSessionState::PreparingProvider,
+            2 => crate::api::sharing::ShareSessionState::CredentialsReady,
+            3 => crate::api::sharing::ShareSessionState::JoiningNetwork,
+            4 => crate::api::sharing::ShareSessionState::VerifyingNetwork,
+            5 => crate::api::sharing::ShareSessionState::Active,
+            6 => crate::api::sharing::ShareSessionState::IdleClosing,
+            7 => crate::api::sharing::ShareSessionState::Closed,
+            8 => crate::api::sharing::ShareSessionState::Rejected,
+            9 => crate::api::sharing::ShareSessionState::Failed,
+            _ => unreachable!("Invalid variant for ShareSessionState: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::sharing::ShareTransitionResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_accepted = <bool>::sse_decode(deserializer);
+        let mut var_errorCode = <Option<String>>::sse_decode(deserializer);
+        let mut var_session = <Option<crate::api::sharing::ShareSession>>::sse_decode(deserializer);
+        return crate::api::sharing::ShareTransitionResult {
+            accepted: var_accepted,
+            error_code: var_errorCode,
+            session: var_session,
+        };
+    }
+}
+
 impl SseDecode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -415,6 +699,20 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
+        6 => wire__crate__api__sharing__get_share_session_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__bluetooth__inspect_windows_bluetooth_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        8 => wire__crate__api__sharing__request_share_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__sharing__transition_share_session_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
         _ => unreachable!(),
     }
 }
@@ -433,6 +731,72 @@ fn pde_ffi_dispatcher_sync_impl(
 
 // Section: rust2dart
 
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::bluetooth::BluetoothAvailability {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Ready => 0.into_dart(),
+            Self::PoweredOff => 1.into_dart(),
+            Self::Unavailable => 2.into_dart(),
+            Self::PermissionDenied => 3.into_dart(),
+            Self::Failed => 4.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::bluetooth::BluetoothAvailability
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::bluetooth::BluetoothAvailability>
+    for crate::api::bluetooth::BluetoothAvailability
+{
+    fn into_into_dart(self) -> crate::api::bluetooth::BluetoothAvailability {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::bluetooth::BluetoothPeer {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.name.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::bluetooth::BluetoothPeer
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::bluetooth::BluetoothPeer>
+    for crate::api::bluetooth::BluetoothPeer
+{
+    fn into_into_dart(self) -> crate::api::bluetooth::BluetoothPeer {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::bluetooth::BluetoothSnapshot {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.availability.into_into_dart().into_dart(),
+            self.devices.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::bluetooth::BluetoothSnapshot
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::bluetooth::BluetoothSnapshot>
+    for crate::api::bluetooth::BluetoothSnapshot
+{
+    fn into_into_dart(self) -> crate::api::bluetooth::BluetoothSnapshot {
+        self
+    }
+}
 // Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::pairing::PairingEnvelope {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
@@ -551,11 +915,144 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::pairing::ProtocolResult>
         self
     }
 }
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::sharing::ShareDirection {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::PhoneProvides => 0.into_dart(),
+            Self::ComputerProvides => 1.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::sharing::ShareDirection
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::sharing::ShareDirection>
+    for crate::api::sharing::ShareDirection
+{
+    fn into_into_dart(self) -> crate::api::sharing::ShareDirection {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::sharing::ShareSession {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.session_id.into_into_dart().into_dart(),
+            self.requester_device_id.into_into_dart().into_dart(),
+            self.provider_device_id.into_into_dart().into_dart(),
+            self.direction.into_into_dart().into_dart(),
+            self.state.into_into_dart().into_dart(),
+            self.revision.into_into_dart().into_dart(),
+            self.last_error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::sharing::ShareSession
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::sharing::ShareSession>
+    for crate::api::sharing::ShareSession
+{
+    fn into_into_dart(self) -> crate::api::sharing::ShareSession {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::sharing::ShareSessionState {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::AwaitingApproval => 0.into_dart(),
+            Self::PreparingProvider => 1.into_dart(),
+            Self::CredentialsReady => 2.into_dart(),
+            Self::JoiningNetwork => 3.into_dart(),
+            Self::VerifyingNetwork => 4.into_dart(),
+            Self::Active => 5.into_dart(),
+            Self::IdleClosing => 6.into_dart(),
+            Self::Closed => 7.into_dart(),
+            Self::Rejected => 8.into_dart(),
+            Self::Failed => 9.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::sharing::ShareSessionState
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::sharing::ShareSessionState>
+    for crate::api::sharing::ShareSessionState
+{
+    fn into_into_dart(self) -> crate::api::sharing::ShareSessionState {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::sharing::ShareTransitionResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.accepted.into_into_dart().into_dart(),
+            self.error_code.into_into_dart().into_dart(),
+            self.session.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::sharing::ShareTransitionResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::sharing::ShareTransitionResult>
+    for crate::api::sharing::ShareTransitionResult
+{
+    fn into_into_dart(self) -> crate::api::sharing::ShareTransitionResult {
+        self
+    }
+}
 
 impl SseEncode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<u8>>::sse_encode(self.into_bytes(), serializer);
+    }
+}
+
+impl SseEncode for crate::api::bluetooth::BluetoothAvailability {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::bluetooth::BluetoothAvailability::Ready => 0,
+                crate::api::bluetooth::BluetoothAvailability::PoweredOff => 1,
+                crate::api::bluetooth::BluetoothAvailability::Unavailable => 2,
+                crate::api::bluetooth::BluetoothAvailability::PermissionDenied => 3,
+                crate::api::bluetooth::BluetoothAvailability::Failed => 4,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::bluetooth::BluetoothPeer {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.name, serializer);
+    }
+}
+
+impl SseEncode for crate::api::bluetooth::BluetoothSnapshot {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::bluetooth::BluetoothAvailability>::sse_encode(self.availability, serializer);
+        <Vec<crate::api::bluetooth::BluetoothPeer>>::sse_encode(self.devices, serializer);
     }
 }
 
@@ -570,6 +1067,16 @@ impl SseEncode for i32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for Vec<crate::api::bluetooth::BluetoothPeer> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::bluetooth::BluetoothPeer>::sse_encode(item, serializer);
+        }
     }
 }
 
@@ -589,6 +1096,16 @@ impl SseEncode for Option<String> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::sharing::ShareSession> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::sharing::ShareSession>::sse_encode(value, serializer);
         }
     }
 }
@@ -659,6 +1176,68 @@ impl SseEncode for crate::api::pairing::ProtocolResult {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.accepted, serializer);
         <Option<String>>::sse_encode(self.error_code, serializer);
+    }
+}
+
+impl SseEncode for crate::api::sharing::ShareDirection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::sharing::ShareDirection::PhoneProvides => 0,
+                crate::api::sharing::ShareDirection::ComputerProvides => 1,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::sharing::ShareSession {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.session_id, serializer);
+        <String>::sse_encode(self.requester_device_id, serializer);
+        <String>::sse_encode(self.provider_device_id, serializer);
+        <crate::api::sharing::ShareDirection>::sse_encode(self.direction, serializer);
+        <crate::api::sharing::ShareSessionState>::sse_encode(self.state, serializer);
+        <u64>::sse_encode(self.revision, serializer);
+        <Option<String>>::sse_encode(self.last_error, serializer);
+    }
+}
+
+impl SseEncode for crate::api::sharing::ShareSessionState {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::sharing::ShareSessionState::AwaitingApproval => 0,
+                crate::api::sharing::ShareSessionState::PreparingProvider => 1,
+                crate::api::sharing::ShareSessionState::CredentialsReady => 2,
+                crate::api::sharing::ShareSessionState::JoiningNetwork => 3,
+                crate::api::sharing::ShareSessionState::VerifyingNetwork => 4,
+                crate::api::sharing::ShareSessionState::Active => 5,
+                crate::api::sharing::ShareSessionState::IdleClosing => 6,
+                crate::api::sharing::ShareSessionState::Closed => 7,
+                crate::api::sharing::ShareSessionState::Rejected => 8,
+                crate::api::sharing::ShareSessionState::Failed => 9,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::sharing::ShareTransitionResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.accepted, serializer);
+        <Option<String>>::sse_encode(self.error_code, serializer);
+        <Option<crate::api::sharing::ShareSession>>::sse_encode(self.session, serializer);
     }
 }
 

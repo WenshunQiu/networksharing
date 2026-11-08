@@ -57,6 +57,16 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# bluetooth_low_energy still uses Microsoft's experimental coroutine header.
+# Silence its deprecation error on newer MSVC toolsets until the plugin moves
+# to the standard coroutine header.
+if(TARGET bluetooth_low_energy_windows_plugin)
+  target_compile_definitions(
+    bluetooth_low_energy_windows_plugin
+    PRIVATE _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+  )
+endif()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

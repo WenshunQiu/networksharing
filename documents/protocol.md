@@ -1,7 +1,7 @@
 # 配对与控制消息协议（草案）
 
 版本：1（草案）  
-状态：封套数据结构待实现验证；认证握手和蓝牙承载待选型
+状态：BLE GATT 承载骨架与分帧已实现；认证握手尚未实现
 
 ## 消息封套
 
@@ -36,4 +36,14 @@
 - 认证完成后才允许传输热点凭据；凭据负载必须端到端加密且绑定会话。
 - 防重放依赖随机会话、序号和消息 ID；时间戳只用于过期提示。
 
-当前 Rust 代码提供封套 JSON 编解码与序号/消息 ID 去重，并经 FRB 暴露给 Dart；认证、加密和蓝牙传输均未实现。Rust session API 负责生成随机 session ID、6 位配对码与 5 分钟到期时间。
+Rust 代码提供封套 JSON 编解码与序号/消息 ID 去重，并经 FRB 暴露给 Dart；Rust session API 负责生成随机 session ID、6 位配对码与 5 分钟到期时间。Flutter 当前实现 Android/Windows 共用的 BLE GATT 服务 UUID `77a10001-7a4b-4d31-9b22-7b8e12a45001`，写入特征 UUID `77a10002-7a4b-4d31-9b22-7b8e12a45001`，通知特征 UUID `77a10003-7a4b-4d31-9b22-7b8e12a45001`。配对页可以广播该服务、扫描发现、连接后写入和订阅 notification。消息按 BLE 单次操作上限分片，每片包含 16 位消息 ID、总字节数、偏移量和负载，以支持重组。此阶段的连接和消息均未认证；尚未完成对端身份校验、PAKE、端到端加密和 Rust 重放策略集成，任何 GATT 消息均不得触发热点或凭据操作。
+
+## 共享会话状态
+
+Rust sharing API 为 UI 和后续平台 Provider 提供单设备会话状态机：
+
+awaitingApproval -> preparingProvider -> credentialsReady -> joiningNetwork -> verifyingNetwork -> active -> idleClosing -> closed
+
+任一准备或连接阶段可进入 failed；只有 awaitingApproval 可进入 rejected。活跃和空闲关闭状态可被显式停止或恢复。每次变更都需传入预期 revision，不匹配时返回 stale_session_revision，避免异步通知或重连覆盖新状态。设备已有非终态会话时拒绝新请求；设备身份 ID 由已认证传输层提供。热点凭据只允许在认证配对完成后通过后续受保护的控制通道传输；当前状态 API 本身不传递或持久化凭据。
+
+这个 API 当前是进程内协调模型，不代表设备间蓝牙连接或网络共享已实现。重启后的持久化、跨进程并发仲裁和设备端到端认证待后续阶段处理。
