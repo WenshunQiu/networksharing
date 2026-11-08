@@ -1,26 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:networksharing/src/rust/api/simple.dart';
-import 'package:networksharing/src/rust/frb_generated.dart';
+import 'package:fluent_ui/fluent_ui.dart';
+
+import 'src/rust/frb_generated.dart';
+
+import 'app/network_sharing_app.dart';
 
 Future<void> main() async {
   await RustLib.init();
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text('flutter_rust_bridge quickstart')),
-        body: Center(
-          child: Text(
-            'Action: Call Rust `greet("Tom")`\nResult: `${greet(name: "Tom")}`',
-          ),
-        ),
-      ),
-    );
-  }
+  runApp(const NetworkSharingApp());
 }

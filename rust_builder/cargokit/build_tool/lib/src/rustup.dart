@@ -35,6 +35,14 @@ class Rustup {
           ?.name ??
       toolchain;
 
+  String resolveWindowsToolchain(String channel, String target) {
+    final preferred = '$channel-x86_64-pc-windows-msvc';
+    if (_installedToolchains.any((toolchain) => toolchain.name == preferred)) {
+      return preferred;
+    }
+    return resolveToolchain(channel);
+  }
+
   void installToolchain(String toolchain) {
     log.info("Installing Rust toolchain: $toolchain");
     runCommand("rustup", ['toolchain', 'install', toolchain]);

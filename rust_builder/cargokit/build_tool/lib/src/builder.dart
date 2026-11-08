@@ -131,7 +131,9 @@ class RustBuilder {
     if (rustup.installedTargets(toolchain) == null) {
       rustup.installToolchain(toolchain);
     }
-    final resolvedToolchain = rustup.resolveToolchain(toolchain);
+    final resolvedToolchain = Platform.isWindows
+        ? rustup.resolveWindowsToolchain(toolchain, target.rust)
+        : rustup.resolveToolchain(toolchain);
     if (toolchain == 'nightly') {
       rustup.installRustSrcForNightly(toolchain: resolvedToolchain);
     }
