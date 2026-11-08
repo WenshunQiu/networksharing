@@ -11,6 +11,10 @@ constexpr UINT kTrayCallbackMessage = WM_APP + 1;
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayRestoreCommand = 1001;
 constexpr UINT kTrayExitCommand = 1002;
+constexpr UINT kCloseResolvedMessage = WM_APP + 2;
+constexpr int kCloseBehaviorAsk = 0;
+constexpr int kCloseBehaviorTray = 1;
+constexpr int kCloseBehaviorExit = 2;
 }
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -116,7 +120,25 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
   if (message == WM_CLOSE && !exit_requested_) {
-    ShowWindow(hwnd, SW_HIDE);
+    if (close_confirmation_pending_) return 0;
+    DWORD behavior = kCloseBehaviorAsk;
+    DWORD bytes = sizeof(behavior);
+    HKEY key;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\NetworkSharing", 0,
+                      KEY_QUERY_VALUE, &key) == ERROR_SUCCESS) {
+      RegQueryValueExW(key, L"CloseBehavior", nullptr, nullptr,
+                       reinterpret_cast<BYTE*>(&behavior), &bytes);
+      RegCloseKey(key);
+    }
+    if (behavior == kCloseBehaviorTray) { ShowWindow(hwnd, SW_HIDE); return 0; }
+    if (behavior == kCloseBehaviorExit) { exit_requested_ = true; return Win32Window::MessageHandler(hwnd, message, wparam, lparam); }
+    close_confirmation_pending_ = true;
+    const int choice = MessageBoxW(
+        hwnd, L"Move NetworkSharing to the system tray? Select No to exit.",
+        L"NetworkSharing", MB_YESNOCANCEL | MB_ICONQUESTION);
+    close_confirmation_pending_ = false;
+    if (choice == IDYES) { ShowWindow(hwnd, SW_HIDE); return 0; }
+    if (choice == IDNO) { exit_requested_ = true; return Win32Window::MessageHandler(hwnd, message, wparam, lparam); }
     return 0;
   }
 

@@ -128,6 +128,35 @@ class SettingsPage extends StatelessWidget {
                           }
                         : null,
                   ),
+                  const SizedBox(height: 24),
+                  const Text('Windows 点击关闭时'),
+                  const SizedBox(height: 8),
+                  ComboBox<WindowsCloseBehavior>(
+                    value: settings.windowsCloseBehavior,
+                    items: const [
+                      ComboBoxItem(
+                        value: WindowsCloseBehavior.ask,
+                        child: Text('每次询问'),
+                      ),
+                      ComboBoxItem(
+                        value: WindowsCloseBehavior.minimizeToTray,
+                        child: Text('默认缩回托盘'),
+                      ),
+                      ComboBoxItem(
+                        value: WindowsCloseBehavior.exit,
+                        child: Text('默认退出应用'),
+                      ),
+                    ],
+                    onChanged: enabled
+                        ? (value) {
+                            if (value != null) {
+                              vm.update(
+                                settings.copyWith(windowsCloseBehavior: value),
+                              );
+                            }
+                          }
+                        : null,
+                  ),
                   const SizedBox(height: 20),
                   Text(vm.saving ? '正在保存…' : '更改后自动保存'),
                   const SizedBox(height: 28),

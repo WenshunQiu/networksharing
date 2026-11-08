@@ -11,6 +11,7 @@ import android.os.IBinder
 class BleForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
+        android.util.Log.i("NetworkSharing", "foreground_service.created")
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
@@ -31,6 +32,11 @@ class BleForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+
+    override fun onDestroy() {
+        android.util.Log.i("NetworkSharing", "foreground_service.destroyed")
+        super.onDestroy()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 

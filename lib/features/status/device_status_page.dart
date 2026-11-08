@@ -67,6 +67,15 @@ class DeviceStatusPage extends StatelessWidget {
         onManagePermissions: _managePermissions,
       );
     }
+    if (bluetooth.hasPersistedPairing) {
+      return _DeviceTile(
+        name: bluetooth.pairedDeviceName ?? '已配对设备',
+        status: '离线 · 应用配对已保存',
+        icon: FluentIcons.devices2,
+        severity: InfoBarSeverity.info,
+        onManagePermissions: _managePermissions,
+      );
+    }
     if (device != null) {
       return _DeviceTile(
         name: device.name,

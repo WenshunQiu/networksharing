@@ -3,12 +3,15 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bluetooth_repository.dart';
 import '../../data/app_logger.dart';
 
 class BluetoothViewModel extends ChangeNotifier {
-  BluetoothViewModel(this._repository);
+  BluetoothViewModel(this._repository) {
+    unawaited(_restorePairing());
+  }
   final BluetoothRepository _repository;
   BluetoothSnapshot? snapshot;
   List<BluetoothDevice> discoveredDevices = const [];
@@ -23,6 +26,8 @@ class BluetoothViewModel extends ChangeNotifier {
   String? _displayedPairingCode;
   Completer<bool>? _pairingResult;
   String? connectedDeviceId;
+  String? pairedDeviceId;
+  String? pairedDeviceName;
   String? diagnosticReceivedAt;
   String? transportError;
   String? lastMessage;
@@ -41,6 +46,32 @@ class BluetoothViewModel extends ChangeNotifier {
       if (device.id == id) return device;
     }
     return null;
+  }
+
+  bool get hasPersistedPairing => pairedDeviceId != null;
+
+  Future<void> _restorePairing() async {
+    try {
+      final prefs = SharedPreferencesAsync();
+      pairedDeviceId = await prefs.getString('networksharing.pairedDeviceId');
+      pairedDeviceName = await prefs.getString(
+        'networksharing.pairedDeviceName',
+      );
+      if (!_disposed) notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _persistPairing(BluetoothDevice? device) async {
+    try {
+      final prefs = SharedPreferencesAsync();
+      if (device == null) {
+        await prefs.remove('networksharing.pairedDeviceId');
+        await prefs.remove('networksharing.pairedDeviceName');
+      } else {
+        await prefs.setString('networksharing.pairedDeviceId', device.id);
+        await prefs.setString('networksharing.pairedDeviceName', device.name);
+      }
+    } catch (_) {}
   }
 
   Future<void> inspect() async {
@@ -252,6 +283,11 @@ class BluetoothViewModel extends ChangeNotifier {
       );
       final success = await result.future.timeout(const Duration(seconds: 15));
       applicationPaired = success;
+      if (success) {
+        pairedDeviceId = connectedDeviceId;
+        pairedDeviceName = connectedDevice?.name;
+        unawaited(_persistPairing(connectedDevice));
+      }
       _log.info(
         'pairing',
         success ? 'authentication.accepted' : 'authentication.rejected',
@@ -287,7 +323,12 @@ class BluetoothViewModel extends ChangeNotifier {
           'pairing',
           accepted ? 'authentication.accepted' : 'authentication.rejected',
         );
-        if (accepted) applicationPaired = true;
+        if (accepted) {
+          applicationPaired = true;
+          pairedDeviceId = connectedDeviceId;
+          pairedDeviceName = connectedDevice?.name;
+          unawaited(_persistPairing(connectedDevice));
+        }
         await _repository.sendMessage(
           jsonEncode({'type': 'pairing_auth_result', 'success': accepted}),
         );

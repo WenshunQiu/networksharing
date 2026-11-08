@@ -23,6 +23,10 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
       orElse: () => ConnectionAutomation.askBeforeSharing,
     );
     final idle = decoded['idleTimeoutMinutes'];
+    final closeBehavior = WindowsCloseBehavior.values.firstWhere(
+      (value) => value.name == decoded['windowsCloseBehavior'],
+      orElse: () => WindowsCloseBehavior.ask,
+    );
     return AppSettings(
       backgroundMonitoring: decoded['backgroundMonitoring'] is bool
           ? decoded['backgroundMonitoring'] as bool
@@ -38,6 +42,7 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
           ? idle
           : 10,
       connectionAutomation: automation,
+      windowsCloseBehavior: closeBehavior,
     );
   }
 
@@ -58,6 +63,7 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
         'startMonitoringOnLaunch': settings.startMonitoringOnLaunch,
         'idleTimeoutMinutes': settings.idleTimeoutMinutes,
         'connectionAutomation': settings.connectionAutomation.name,
+        'windowsCloseBehavior': settings.windowsCloseBehavior.name,
       }),
     );
   }

@@ -33,11 +33,12 @@ class MainActivity : FlutterActivity() {
                     "setBackgroundTransport" -> {
                         val enabled = call.argument<Boolean>("enabled") == true
                         if (enabled) {
-                            val intent = android.content.Intent(this, BleForegroundService::class.java)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+                            startBleForegroundService(result)
+                            return@setMethodCallHandler
                         } else stopService(android.content.Intent(this, BleForegroundService::class.java))
                         result.success(true)
                     }
+                    "setWindowsCloseBehavior" -> result.success(false)
                     "openAppSettings" -> {
                         startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
                         result.success(true)
@@ -49,6 +50,32 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private var pendingServiceResult: MethodChannel.Result? = null
+    private val notificationPermissionRequestCode = 4074
+
+    private fun startBleForegroundService(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            if (pendingServiceResult != null) {
+                result.error("busy", "A notification permission request is pending", null)
+                return
+            }
+            pendingServiceResult = result
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), notificationPermissionRequestCode)
+            return
+        }
+        try {
+            val intent = android.content.Intent(this, BleForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+            android.util.Log.i("NetworkSharing", "foreground_service.start_requested")
+            result.success(true)
+        } catch (error: Exception) {
+            android.util.Log.e("NetworkSharing", "foreground_service.start_failed", error)
+            result.error("foreground_service_start_failed", error.javaClass.simpleName, null)
+        }
     }
 
     @Suppress("MissingPermission")
@@ -175,6 +202,16 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == notificationPermissionRequestCode) {
+            val result = pendingServiceResult ?: return
+            pendingServiceResult = null
+            if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                startBleForegroundService(result)
+            } else {
+                result.error("notification_permission_denied", "Notifications permission is required to show the background connection", null)
+            }
+            return
+        }
         if (requestCode == scanPermissionRequestCode) {
             val result = pendingScanResult ?: return
             pendingScanResult = null
