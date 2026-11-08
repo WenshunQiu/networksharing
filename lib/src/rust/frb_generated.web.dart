@@ -35,6 +35,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BluetoothPeer dco_decode_bluetooth_peer(dynamic raw);
 
   @protected
+  BluetoothScanResult dco_decode_bluetooth_scan_result(dynamic raw);
+
+  @protected
   BluetoothSnapshot dco_decode_bluetooth_snapshot(dynamic raw);
 
   @protected
@@ -92,6 +95,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_u_16(dynamic raw);
 
   @protected
+  int dco_decode_u_32(dynamic raw);
+
+  @protected
   BigInt dco_decode_u_64(dynamic raw);
 
   @protected
@@ -110,6 +116,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BluetoothPeer sse_decode_bluetooth_peer(SseDeserializer deserializer);
+
+  @protected
+  BluetoothScanResult sse_decode_bluetooth_scan_result(
+    SseDeserializer deserializer,
+  );
 
   @protected
   BluetoothSnapshot sse_decode_bluetooth_snapshot(SseDeserializer deserializer);
@@ -185,6 +196,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
@@ -204,6 +218,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_bluetooth_peer(BluetoothPeer self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bluetooth_scan_result(
+    BluetoothScanResult self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_bluetooth_snapshot(
@@ -303,6 +323,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_64(BigInt self, SseSerializer serializer);

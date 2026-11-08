@@ -7,7 +7,14 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`
+
+/// Migration probe only. Returned IDs are btleplug IDs and must not be passed
+/// to the existing Flutter BLE plugin's connect method.
+Future<BluetoothScanResult> probeRustBluetoothScan({required int durationMs}) =>
+    RustLib.instance.api.crateApiBluetoothProbeRustBluetoothScan(
+      durationMs: durationMs,
+    );
 
 /// Runs on an FRB worker; does not change radio state or initiate pairing.
 Future<BluetoothSnapshot> inspectWindowsBluetooth() =>
@@ -38,6 +45,24 @@ class BluetoothPeer {
           runtimeType == other.runtimeType &&
           id == other.id &&
           name == other.name;
+}
+
+class BluetoothScanResult {
+  final List<BluetoothPeer> devices;
+  final String? error;
+
+  const BluetoothScanResult({required this.devices, this.error});
+
+  @override
+  int get hashCode => devices.hashCode ^ error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BluetoothScanResult &&
+          runtimeType == other.runtimeType &&
+          devices == other.devices &&
+          error == other.error;
 }
 
 class BluetoothSnapshot {

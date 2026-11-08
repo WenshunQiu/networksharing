@@ -75,6 +75,17 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('networksharing/bluetooth');
 
+  test('only Android registers CCCD explicitly; WinRT supplies its own', () {
+    expect(
+      createControlService(includeCccd: true).characteristics.last.descriptors,
+      hasLength(1),
+    );
+    expect(
+      createControlService(includeCccd: false).characteristics.last.descriptors,
+      isEmpty,
+    );
+  });
+
   test('control frames reassemble fragments in any order', () {
     final decoder = ControlFrameDecoder();
     const message = '{"type":"hello","value":"hello world"}';

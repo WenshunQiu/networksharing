@@ -11,6 +11,9 @@ import 'app_logger.dart';
 import '../src/rust/api/bluetooth.dart' as rust_bluetooth;
 
 class PlatformBluetoothRepository implements BluetoothRepository {
+  late final controlService = createControlService(
+    includeCccd: defaultTargetPlatform == TargetPlatform.android,
+  );
   final _log = AppLogger.instance;
   static const _channel = MethodChannel('networksharing/bluetooth');
   ble.CentralManager? _centralInstance;

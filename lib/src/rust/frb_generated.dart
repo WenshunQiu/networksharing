@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1446994326;
+  int get rustContentHash => -1099963229;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -107,6 +107,10 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<BluetoothSnapshot> crateApiBluetoothInspectWindowsBluetooth();
+
+  Future<BluetoothScanResult> crateApiBluetoothProbeRustBluetoothScan({
+    required int durationMs,
+  });
 
   Future<ShareSession> crateApiSharingRequestShare({
     required String requesterDeviceId,
@@ -356,6 +360,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "inspect_windows_bluetooth", argNames: []);
 
   @override
+  Future<BluetoothScanResult> crateApiBluetoothProbeRustBluetoothScan({
+    required int durationMs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(durationMs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bluetooth_scan_result,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiBluetoothProbeRustBluetoothScanConstMeta,
+        argValues: [durationMs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBluetoothProbeRustBluetoothScanConstMeta =>
+      const TaskConstMeta(
+        debugName: "probe_rust_bluetooth_scan",
+        argNames: ["durationMs"],
+      );
+
+  @override
   Future<ShareSession> crateApiSharingRequestShare({
     required String requesterDeviceId,
     required String providerDeviceId,
@@ -371,7 +408,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -410,7 +447,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -452,6 +489,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return BluetoothPeer(
       id: dco_decode_String(arr[0]),
       name: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  BluetoothScanResult dco_decode_bluetooth_scan_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return BluetoothScanResult(
+      devices: dco_decode_list_bluetooth_peer(arr[0]),
+      error: dco_decode_opt_String(arr[1]),
     );
   }
 
@@ -619,6 +668,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   BigInt dco_decode_u_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeU64(raw);
@@ -658,6 +713,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_id = sse_decode_String(deserializer);
     var var_name = sse_decode_String(deserializer);
     return BluetoothPeer(id: var_id, name: var_name);
+  }
+
+  @protected
+  BluetoothScanResult sse_decode_bluetooth_scan_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_devices = sse_decode_list_bluetooth_peer(deserializer);
+    var var_error = sse_decode_opt_String(deserializer);
+    return BluetoothScanResult(devices: var_devices, error: var_error);
   }
 
   @protected
@@ -867,6 +932,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
+  }
+
+  @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getBigUint64();
@@ -903,6 +974,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
     sse_encode_String(self.name, serializer);
+  }
+
+  @protected
+  void sse_encode_bluetooth_scan_result(
+    BluetoothScanResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_bluetooth_peer(self.devices, serializer);
+    sse_encode_opt_String(self.error, serializer);
   }
 
   @protected
@@ -1090,6 +1171,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_u_16(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint16(self);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
   }
 
   @protected

@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1446994326;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1099963229;
 
 // Section: executor
 
@@ -288,6 +288,44 @@ fn wire__crate__api__bluetooth__inspect_windows_bluetooth_impl(
         },
     )
 }
+fn wire__crate__api__bluetooth__probe_rust_bluetooth_scan_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "probe_rust_bluetooth_scan",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_duration_ms = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(
+                            crate::api::bluetooth::probe_rust_bluetooth_scan(api_duration_ms).await,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__sharing__request_share_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -404,6 +442,18 @@ impl SseDecode for crate::api::bluetooth::BluetoothPeer {
         return crate::api::bluetooth::BluetoothPeer {
             id: var_id,
             name: var_name,
+        };
+    }
+}
+
+impl SseDecode for crate::api::bluetooth::BluetoothScanResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_devices = <Vec<crate::api::bluetooth::BluetoothPeer>>::sse_decode(deserializer);
+        let mut var_error = <Option<String>>::sse_decode(deserializer);
+        return crate::api::bluetooth::BluetoothScanResult {
+            devices: var_devices,
+            error: var_error,
         };
     }
 }
@@ -641,6 +691,13 @@ impl SseDecode for u16 {
     }
 }
 
+impl SseDecode for u32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u32::<NativeEndian>().unwrap()
+    }
+}
+
 impl SseDecode for u64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -706,8 +763,14 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        8 => wire__crate__api__sharing__request_share_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__sharing__transition_share_session_impl(
+        8 => wire__crate__api__bluetooth__probe_rust_bluetooth_scan_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        9 => wire__crate__api__sharing__request_share_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__sharing__transition_share_session_impl(
             port,
             ptr,
             rust_vec_len,
@@ -773,6 +836,27 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::bluetooth::BluetoothPeer>
     for crate::api::bluetooth::BluetoothPeer
 {
     fn into_into_dart(self) -> crate::api::bluetooth::BluetoothPeer {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::bluetooth::BluetoothScanResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.devices.into_into_dart().into_dart(),
+            self.error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::bluetooth::BluetoothScanResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::bluetooth::BluetoothScanResult>
+    for crate::api::bluetooth::BluetoothScanResult
+{
+    fn into_into_dart(self) -> crate::api::bluetooth::BluetoothScanResult {
         self
     }
 }
@@ -1048,6 +1132,14 @@ impl SseEncode for crate::api::bluetooth::BluetoothPeer {
     }
 }
 
+impl SseEncode for crate::api::bluetooth::BluetoothScanResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::api::bluetooth::BluetoothPeer>>::sse_encode(self.devices, serializer);
+        <Option<String>>::sse_encode(self.error, serializer);
+    }
+}
+
 impl SseEncode for crate::api::bluetooth::BluetoothSnapshot {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1245,6 +1337,13 @@ impl SseEncode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_u16::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for u32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u32::<NativeEndian>(self).unwrap();
     }
 }
 

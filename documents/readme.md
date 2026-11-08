@@ -3,3 +3,10 @@
 ## contribute
 
 ### 版本问题
+
+## 开发文档
+
+- [Rust 蓝牙迁移与扩展边界](rust-bluetooth-migration.md)
+- [平台能力与实机清单](platform-capabilities.md)
+- [设置持久化](settings.md)
+- [实现进度](implementation-status.md)

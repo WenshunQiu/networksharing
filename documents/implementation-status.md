@@ -62,3 +62,7 @@ BLE 应用接入阶段：30 项 Flutter 测试通过，Dart 静态分析无问�
 
 新增结构化 JSONL 文件日志、2 MiB 轮转和排队刷新接口；修复 BLE 初始化等待、Windows Peripheral 不支持的连接事件订阅、CCCD 和订阅者检查。扫描结果实时更新。当前 32 项 Flutter 测试、5 项 Rust 测试和 Dart 静态分析通过。当前 transport 仍为 Flutter BLE 插件，后续分阶段迁移到 Rust。
 
+
+### Rust transport 迁移起点
+
+已引入 btleplug 0.13.5 与 Windows 服务 UUID 扫描探针，并通过 FRB 重新生成桥接；探针暂未接入 UI，Android 返回明确的 JNI 初始化缺失状态。现有 Flutter BLE transport 保留。补充平台专属 CCCD：Android 显式注册，Windows 由 WinRT 管理。最终 33 项 Flutter 测试及 Dart 分析通过；Rust 5 项测试通过。完整迁移边界和日志导出命令见 rust-bluetooth-migration.md。

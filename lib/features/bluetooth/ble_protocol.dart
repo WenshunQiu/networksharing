@@ -98,7 +98,9 @@ class _PartialMessage {
   int receivedBytes = 0;
 }
 
-final controlService = GATTService(
+// WinRT owns CCCD creation for notify characteristics; Android requires an
+// explicit descriptor. Creating a reserved CCCD on Windows fails registration.
+GATTService createControlService({required bool includeCccd}) => GATTService(
   uuid: UUID.fromString(controlServiceUuid),
   isPrimary: true,
   includedServices: const [],
@@ -114,13 +116,14 @@ final controlService = GATTService(
       properties: [GATTCharacteristicProperty.notify],
       permissions: const [],
       descriptors: [
-        GATTDescriptor.mutable(
-          uuid: UUID.fromString(cccDescriptorUuid),
-          permissions: [
-            GATTCharacteristicPermission.read,
-            GATTCharacteristicPermission.write,
-          ],
-        ),
+        if (includeCccd)
+          GATTDescriptor.mutable(
+            uuid: UUID.fromString(cccDescriptorUuid),
+            permissions: [
+              GATTCharacteristicPermission.read,
+              GATTCharacteristicPermission.write,
+            ],
+          ),
       ],
     ),
   ],
