@@ -16,6 +16,16 @@
 - 正常共享协议新增 share_*，与 Debug 消息隔离；Rust 状态模型和迁移目标保留，目前实际跨设备编排仍在 Dart，BLE 与 Provider 未宣称完成 Rust 迁移。
 - 本轮 52 项 Flutter 测试全部通过，Flutter analyze 无问题。覆盖完整共享编排、后台通知投递、权限持久化重建、窄屏设备权限对话框、请求超时、取消期间清理及客户端空闲检查。最新提交的 Android Debug APK、Windows Debug 和 Release 构建结果见下方交付记录。
 
+## 2026-11-10 交付验证
+
+- Flutter analyze / Dart analyze：无问题；全部 Flutter 测试 52 项通过。
+- fvm flutter build apk --debug：成功，产物 build/app/outputs/flutter-apk/app-debug.apk。
+- fvm flutter build windows --debug：成功，产物 build/windows/x64/runner/Debug/networksharing.exe。
+- fvm flutter build windows --release：成功，产物 build/windows/x64/runner/Release/networksharing.exe。
+- Windows getHotspot 实际只读探测成功，确认 enabled=false、clientCount=0，未输出热点密码；本轮未为验证而改变系统热点状态。
+- Git 功能提交 9239a66；流程与 Agent 文档提交 c25de1e。交付前合入 master，未纳入不相关的 devtools_options.yaml。
+- 以上是构建与自动化证据；正常双向共享、后台通知动作和热点客户端计数变化需用户按 application-sharing.md 进行双端实机测试。
+
 ## 开发环境
 
 - 使用 FVM 管理 Flutter stable；本次验证版本为 Flutter 3.47.9、Dart 3.13.7。
