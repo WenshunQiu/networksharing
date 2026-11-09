@@ -1,5 +1,7 @@
 # 网络共享联调（2026-11-09）
 
+2026-11-10 更新：用户已确认本页 Debug 项目在其设备上成功；一次 Windows 热点开启失败为主动触发。正式自动共享、设备授权及后台通知的新链路见 [application-sharing.md](application-sharing.md)，当前开发约定见 [agent-development-guide.md](agent-development-guide.md)。本页保留 Debug 单项联调方法。
+
 ## 当前路径
 
 保持单个活动设备：Android 主动扫描 Windows 广播。首次验证 Windows 当前配对码；Windows 生成恢复令牌，两端保存同一份。Android 重启时扫描保存的设备 ID；心跳每 10 秒发送，30 秒无响应则清除当前链路状态，重新扫描和连接，再验证恢复令牌。扫描失败或未发现设备时等待 5 秒重试；手动断开暂停自动重连。Windows 持续广播等待手机恢复。

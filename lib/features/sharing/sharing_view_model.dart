@@ -208,6 +208,7 @@ class SharingViewModel extends ChangeNotifier {
     _ticking = true;
     try {
       final now = _now();
+      if (!_permissionReady) return;
       if (_deadline != null && now.isAfter(_deadline!)) {
         await stop(reason: '请求或连接等待超时，请重试。');
         _set(SharingPhase.failed, '请求或连接等待超时，请重试。');

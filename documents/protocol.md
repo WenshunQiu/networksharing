@@ -1,7 +1,27 @@
 # 配对与控制消息协议（草案）
 
-版本：1（草案）  
-状态：BLE GATT 承载骨架与分帧已实现；认证握手尚未实现
+当前运行协议说明：2026-11-10。下方“消息封套/首期消息类型/安全决策”是早期设计和后续目标，不代表现有线上消息已使用该封套。当前 BLE 有配对码校验、恢复令牌和认证后消息门控；安全加固单独安排，不阻断当前功能联调。
+
+## 当前正式共享消息
+
+正式消息包含 type、version=1 和 sessionId（32 位随机 hex）。只在应用配对认证后投递给 SharingViewModel。接收方核对当前会话、角色和状态；两分钟期限、已见请求集合及动作消费避免重复启动。每端只处理一个活动会话；双方同时请求时拒绝冲突，请用户重试。
+
+| type | 字段 | 行为 |
+| --- | --- | --- |
+| share_request | 通用字段 | 请求对端提供热点，按设备授权提示或处理 |
+| share_response | accepted | 接受代表开始准备，不代表连接成功；拒绝结束等待 |
+| share_credentials | ssid、password | 提供方读取真实热点后发送；仅当前等待会话可以触发自动连接 |
+| share_result | online | 接入方验证实际互联网后回报，更新双方状态 |
+| share_cancel | 通用字段 | 取消/结束会话；提供方回收自有热点，包括连接失败后的热点 |
+| share_error | 通用字段 | 提供方准备失败，终止当前等待 |
+
+share_* 不替换已有 Debug 消息。Debug 使用 hotspot_request/requestId、debug_wifi_credentials/transferId 及对应 ACK/结果；收到 Debug 凭据只展示，不自动加入。常规心跳与 peer_network_status 保持原语义。
+
+后台通知动作 hotspot:accept:<id> / hotspot:reject:<id>：32 位 hex 为正式共享 ID，16 字符为既有 Debug 请求 ID；share:request 表示本机离线提示的确认。后台邮箱项两分钟过期，动作执行前还需匹配活跃会话和连接。
+
+实际状态与 Provider 接口、实机步骤见 [application-sharing.md](application-sharing.md)。后续 Rust 迁移应保持这些消息语义或明确版本迁移，不能误用 Debug 凭据触发正常流程。
+
+## 早期封套设计（后续目标）
 
 ## 消息封套
 

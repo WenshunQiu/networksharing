@@ -16,6 +16,7 @@ class DebugNotifications {
   Future<bool> Function(String requestId, bool accepted)? onSharingApproval;
   (String, bool)? _pendingAction;
   bool _pendingShareRequest = false;
+  final Set<String> _pendingActions = {};
   Timer? _actionPoller;
   bool _draining = false;
 
@@ -50,8 +51,11 @@ class DebugNotifications {
                 const Duration(minutes: 2).inMicroseconds) {
           continue;
         }
+        final actionId = '$created:$action';
+        if (!_pendingActions.add(actionId)) continue;
         AppLogger.instance.info('notification', 'background_action.received');
         await _dispatchAction(action);
+        _pendingActions.remove(actionId);
       }
     } catch (error) {
       AppLogger.instance.warning('notification', 'background_action.failed', {
