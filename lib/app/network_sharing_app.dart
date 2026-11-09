@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/platform_bluetooth_repository.dart';
 import '../features/bluetooth/bluetooth_view_model.dart';
 import '../features/bluetooth/bluetooth_repository.dart';
+import '../features/sharing/sharing_view_model.dart';
 
 String systemFontFamilyForPlatform(TargetPlatform platform) =>
     switch (platform) {
@@ -46,6 +47,7 @@ class _NetworkSharingAppState extends State<NetworkSharingApp> {
   late final ConnectivityViewModel _connectivity;
   late final SettingsViewModel _settings;
   late final BluetoothViewModel _bluetooth;
+  late final SharingViewModel _sharing;
 
   String get _systemFontFamily =>
       systemFontFamilyForPlatform(defaultTargetPlatform);
@@ -63,11 +65,14 @@ class _NetworkSharingAppState extends State<NetworkSharingApp> {
     );
     _bluetooth = BluetoothViewModel(
       widget.bluetoothRepository ?? PlatformBluetoothRepository(),
+      autoRecoverOnRestore: false,
     );
+    _sharing = SharingViewModel(_bluetooth, _connectivity, _settings);
   }
 
   @override
   void dispose() {
+    _sharing.dispose();
     _viewModel.dispose();
     _connectivity.dispose();
     _settings.dispose();
@@ -96,6 +101,7 @@ class _NetworkSharingAppState extends State<NetworkSharingApp> {
         connectivity: _connectivity,
         settings: _settings,
         bluetooth: _bluetooth,
+        sharing: _sharing,
       ),
     );
   }

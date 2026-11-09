@@ -23,6 +23,7 @@ class BluetoothViewModel extends ChangeNotifier {
     this.reconnectDelay = const Duration(seconds: 5),
     this.initialReconnectDelay = const Duration(seconds: 2),
     this.initialNetworkDelay = const Duration(seconds: 5),
+    this.autoRecoverOnRestore = true,
   }) : _connectivityRepository =
            connectivityRepository ?? HttpConnectivityRepository() {
     _pairingLoadFuture = _restorePairing();
@@ -30,12 +31,69 @@ class BluetoothViewModel extends ChangeNotifier {
         _handleHotspotNotificationAction;
   }
   final BluetoothRepository _repository;
+  final _sharingMessages = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get sharingMessages => _sharingMessages.stream;
+
+  Future<void> sendSharingMessage(Map<String, dynamic> message) async {
+    if (_disposed || !applicationPaired || !peerOnline) {
+      throw StateError('已配对设备当前未连接');
+    }
+    await _repository.sendMessage(jsonEncode(message));
+  }
+
+  Timer? _runtimeTimer;
+  bool _runtimeBusy = false;
+  bool _backgroundEnabled = true;
+
+  Future<void> startRuntime() async {
+    _runtimeTimer ??= Timer.periodic(const Duration(seconds: 20), (_) {
+      unawaited(recoverConnection());
+    });
+    if (defaultTargetPlatform == TargetPlatform.windows && !advertising) {
+      await setAdvertising(true);
+    }
+    await recoverConnection();
+  }
+
+  Future<void> setBackgroundEnabled(bool enabled) async {
+    if (_backgroundEnabled == enabled) return;
+    _backgroundEnabled = enabled;
+    await _setBackgroundTransport(enabled);
+  }
+
+  Future<void> recoverConnection() async {
+    await _pairingLoadFuture;
+    if (_disposed ||
+        _runtimeBusy ||
+        !_autoReconnect ||
+        applicationPaired ||
+        (connectedDeviceId != null && !pairingRestoring)) {
+      return;
+    }
+    _runtimeBusy = true;
+    try {
+      _log.info('bluetooth', 'runtime.recovery_check');
+      if (defaultTargetPlatform == TargetPlatform.windows) {
+        if (!advertising) await setAdvertising(true);
+      } else if (defaultTargetPlatform == TargetPlatform.android &&
+          _backgroundEnabled &&
+          pairedDeviceId != null &&
+          !pairingRestoring) {
+        if (_backgroundEnabled) await _setBackgroundTransport(true);
+        await _attemptReconnect();
+      }
+    } finally {
+      _runtimeBusy = false;
+    }
+  }
+
   final ConnectivityRepository _connectivityRepository;
   final Duration heartbeatInterval;
   final Duration peerTimeout;
   final Duration reconnectDelay;
   final Duration initialReconnectDelay;
   final Duration initialNetworkDelay;
+  final bool autoRecoverOnRestore;
   BluetoothSnapshot? snapshot;
   List<BluetoothDevice> discoveredDevices = const [];
   bool checking = false;
@@ -146,7 +204,8 @@ class BluetoothViewModel extends ChangeNotifier {
         _resumeTokensByDevice.putIfAbsent(pairedDeviceId!, () => _resumeToken!);
       }
       pairingRestored = pairedDeviceId != null && _resumeToken != null;
-      if (pairingRestored &&
+      if (autoRecoverOnRestore &&
+          pairingRestored &&
           !_disposed &&
           defaultTargetPlatform == TargetPlatform.android) {
         _reconnectTimer = Timer(initialReconnectDelay, _attemptReconnect);
@@ -436,6 +495,7 @@ class BluetoothViewModel extends ChangeNotifier {
   }
 
   Future<void> _setBackgroundTransport(bool enabled) async {
+    if (enabled && !_backgroundEnabled) return;
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
       await _platformChannel.invokeMethod<bool>('setBackgroundTransport', {
@@ -517,6 +577,10 @@ class BluetoothViewModel extends ChangeNotifier {
         peerOnline = true;
       }
       final type = decoded['type'];
+      if (type is String && type.startsWith('share_')) {
+        if (applicationPaired) _sharingMessages.add(decoded);
+        return;
+      }
       if (!applicationPaired &&
           const {
             'hotspot_request',
@@ -1124,6 +1188,8 @@ class BluetoothViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _runtimeTimer?.cancel();
+    _sharingMessages.close();
     _stopPeerMonitoring();
     _reconnectTimer?.cancel();
     _disposed = true;

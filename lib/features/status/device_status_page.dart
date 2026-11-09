@@ -5,18 +5,25 @@ import 'package:flutter/services.dart';
 import '../../domain/connectivity.dart';
 import 'connectivity_view_model.dart';
 import '../bluetooth/bluetooth_view_model.dart';
+import '../sharing/sharing_view_model.dart';
 
 class DeviceStatusPage extends StatelessWidget {
   const DeviceStatusPage({
     required this.viewModel,
     required this.bluetoothViewModel,
+    this.sharingViewModel,
     super.key,
   });
   final ConnectivityViewModel viewModel;
   final BluetoothViewModel bluetoothViewModel;
+  final SharingViewModel? sharingViewModel;
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([viewModel, bluetoothViewModel]),
+    animation: Listenable.merge([
+      viewModel,
+      bluetoothViewModel,
+      sharingViewModel,
+    ]),
     builder: (context, _) => SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Center(
@@ -51,6 +58,10 @@ class DeviceStatusPage extends StatelessWidget {
               Text('已配对设备', style: FluentTheme.of(context).typography.subtitle),
               const SizedBox(height: 12),
               _pairedDeviceTile(context),
+              if (sharingViewModel != null) ...[
+                const SizedBox(height: 24),
+                _sharingControls(context),
+              ],
             ],
           ),
         ),
@@ -68,7 +79,7 @@ class DeviceStatusPage extends StatelessWidget {
         status: '在线 · ${bluetooth.peerNetworkStatus ?? '网络状态检测中'}',
         icon: FluentIcons.devices2,
         severity: InfoBarSeverity.success,
-        onManagePermissions: _managePermissions,
+        onManagePermissions: () => _managePermissions(context),
       );
     }
     if (bluetooth.hasPersistedPairing) {
@@ -77,7 +88,7 @@ class DeviceStatusPage extends StatelessWidget {
         status: '离线 · 应用配对已保存',
         icon: FluentIcons.devices2,
         severity: InfoBarSeverity.info,
-        onManagePermissions: _managePermissions,
+        onManagePermissions: () => _managePermissions(context),
       );
     }
     if (device != null) {
@@ -86,7 +97,7 @@ class DeviceStatusPage extends StatelessWidget {
         status: '在线 · 尚未完成应用配对',
         icon: FluentIcons.devices2,
         severity: InfoBarSeverity.warning,
-        onManagePermissions: _managePermissions,
+        onManagePermissions: () => _managePermissions(context),
       );
     }
     return _DeviceTile(
@@ -94,11 +105,130 @@ class DeviceStatusPage extends StatelessWidget {
       status: isWindows && bluetooth.advertising ? '等待设备连接' : '暂无在线设备',
       icon: FluentIcons.bluetooth,
       severity: InfoBarSeverity.info,
-      onManagePermissions: _managePermissions,
+      onManagePermissions: () => _managePermissions(context),
     );
   }
 
-  Future<void> _managePermissions() async {
+  Widget _sharingControls(BuildContext context) {
+    final sharing = sharingViewModel!;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: FluentTheme.of(context).resources.cardBackgroundFillColorDefault,
+        border: Border.all(
+          color: FluentTheme.of(context).resources.cardStrokeColorDefault,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('网络共享', style: FluentTheme.of(context).typography.subtitle),
+          const SizedBox(height: 8),
+          Text(sharing.status),
+          if (sharing.ownsHotspot) ...[
+            const SizedBox(height: 6),
+            Text(
+              '本应用开启的热点 · 在线客户端：${sharing.clientCount?.toString() ?? '系统暂未提供'}',
+            ),
+          ],
+          if (sharing.pendingApproval) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: sharing.busy ? null : () => sharing.approve(true),
+                  child: const Text('允许开启'),
+                ),
+                const SizedBox(width: 8),
+                Button(
+                  onPressed: sharing.busy ? null : () => sharing.approve(false),
+                  child: const Text('拒绝'),
+                ),
+              ],
+            ),
+          ],
+          if (sharing.canRequest) ...[
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: sharing.requestNetwork,
+              child: const Text('请求对方热点'),
+            ),
+          ],
+          if (sharing.ownsHotspot || sharing.inSession) ...[
+            const SizedBox(height: 8),
+            Button(onPressed: () => sharing.stop(), child: const Text('停止共享')),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _managePermissions(BuildContext context) async {
+    final sharing = sharingViewModel;
+    if (sharing == null || !bluetoothViewModel.hasPersistedPairing) {
+      await _openSystemPermissions();
+      return;
+    }
+    var selected = sharing.permission;
+    final result = await showDialog<SharingPermission>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => ContentDialog(
+          title: Text('管理 ${bluetoothViewModel.pairedDeviceName ?? '已配对设备'}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('当此设备请求本机开启热点时：'),
+              const SizedBox(height: 12),
+              RadioGroup<SharingPermission>(
+                groupValue: selected,
+                onChanged: (value) {
+                  if (value != null) setState(() => selected = value);
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final value in SharingPermission.values)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: RadioButton<SharingPermission>(
+                          value: value,
+                          content: Text(switch (value) {
+                            SharingPermission.ask => '每次询问',
+                            SharingPermission.allow => '自动同意',
+                            SharingPermission.deny => '自动拒绝',
+                          }),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              HyperlinkButton(
+                onPressed: _openSystemPermissions,
+                child: const Text('打开系统权限设置'),
+              ),
+            ],
+          ),
+          actions: [
+            Button(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(selected),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null) await sharing.setPermission(result);
+  }
+
+  Future<void> _openSystemPermissions() async {
     if (defaultTargetPlatform == TargetPlatform.android) {
       await const MethodChannel('networksharing/bluetooth')
           .invokeMethod<void>('openAppSettings');

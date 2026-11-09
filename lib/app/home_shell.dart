@@ -7,6 +7,7 @@ import '../features/status/connectivity_view_model.dart';
 import '../features/settings/settings_page.dart';
 import '../features/settings/settings_view_model.dart';
 import '../features/bluetooth/bluetooth_view_model.dart';
+import '../features/sharing/sharing_view_model.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -14,6 +15,7 @@ class HomeShell extends StatefulWidget {
     required this.connectivity,
     required this.settings,
     required this.bluetooth,
+    required this.sharing,
     super.key,
   });
 
@@ -21,6 +23,7 @@ class HomeShell extends StatefulWidget {
   final ConnectivityViewModel connectivity;
   final SettingsViewModel settings;
   final BluetoothViewModel bluetooth;
+  final SharingViewModel sharing;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -39,6 +42,7 @@ class _HomeShellState extends State<HomeShell> {
       DeviceStatusPage(
         viewModel: widget.connectivity,
         bluetoothViewModel: widget.bluetooth,
+        sharingViewModel: widget.sharing,
       ),
       SettingsPage(
         viewModel: widget.settings,

@@ -60,7 +60,7 @@ try {
         if ($result.Status.ToString() -ne "Success") { throw ("Mobile Hotspot: " + $result.Status + " " + $result.AdditionalErrorMessage) }
     }
     $config = $manager.GetCurrentAccessPointConfiguration()
-    @{success=$true; enabled=($manager.TetheringOperationalState.ToString() -eq "On"); ssid=$config.Ssid; password=$config.Passphrase; message=$manager.TetheringOperationalState.ToString()} | ConvertTo-Json -Compress
+    @{success=$true; enabled=($manager.TetheringOperationalState.ToString() -eq "On"); clientCount=[int]$manager.ClientCount; ssid=$config.Ssid; password=$config.Passphrase; message=$manager.TetheringOperationalState.ToString()} | ConvertTo-Json -Compress
 } catch {
     @{success=$false; message=$_.Exception.Message} | ConvertTo-Json -Compress
     exit 1

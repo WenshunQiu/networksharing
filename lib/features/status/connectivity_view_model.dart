@@ -17,9 +17,29 @@ class ConnectivityViewModel extends ChangeNotifier {
   bool checking = false;
   bool _disposed = false;
   Timer? _poller;
+  Future<void>? _pendingRefresh;
 
-  Future<void> refresh() async {
-    if (checking || _disposed) return;
+  void setMonitoring(bool enabled) {
+    if (_disposed) return;
+    if (!enabled) {
+      _poller?.cancel();
+      _poller = null;
+    } else {
+      _poller ??= Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => unawaited(refresh()),
+      );
+    }
+  }
+
+  Future<void> refresh() {
+    if (_disposed) return Future.value();
+    return _pendingRefresh ??= _refresh().whenComplete(
+      () => _pendingRefresh = null,
+    );
+  }
+
+  Future<void> _refresh() async {
     checking = true;
     notifyListeners();
     try {

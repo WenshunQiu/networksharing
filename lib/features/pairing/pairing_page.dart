@@ -2,8 +2,6 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
-import 'dart:async';
-
 import 'pairing_view_model.dart';
 import '../bluetooth/bluetooth_view_model.dart';
 import '../../data/app_logger.dart';
@@ -22,7 +20,6 @@ class PairingPage extends StatefulWidget {
 
 class _PairingPageState extends State<PairingPage> {
   final _codeController = TextEditingController();
-  bool _automaticAdvertising = false;
   @override
   void dispose() {
     _codeController.dispose();
@@ -37,12 +34,6 @@ class _PairingPageState extends State<PairingPage> {
         final vm = widget.viewModel;
         final bluetooth = widget.bluetoothViewModel;
         final isWindows = defaultTargetPlatform == TargetPlatform.windows;
-        if (isWindows && !_automaticAdvertising && bluetooth != null) {
-          _automaticAdvertising = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            unawaited(bluetooth.setAdvertising(true));
-          });
-        }
         if (isWindows && bluetooth != null) {
           bluetooth.setDisplayedPairingCode(
             vm.codeReady ? vm.pairingCode : null,

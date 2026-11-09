@@ -55,6 +55,35 @@ object RootHotspot {
             }
             val json = JSONObject().put("success", true).put("enabled", state == 13)
                 .put("message", "Root tethering state=$state")
+            // The framework callback reports current clients when registered.
+            // An unsupported callback remains unknown, never an assumed zero.
+            if (operation == "getHotspot") runCatching {
+                val callbackType = Class.forName("android.net.TetheringManager" + "$" + "TetheringEventCallback")
+                val clientsReady = CountDownLatch(1)
+                var count: Int? = null
+                val callback = java.lang.reflect.Proxy.newProxyInstance(
+                    callbackType.classLoader, arrayOf(callbackType)
+                ) { proxy, method, values ->
+                    when (method.name) {
+                        "onClientsChanged" -> {
+                            count = (values?.firstOrNull() as? Collection<*>)?.size
+                            clientsReady.countDown()
+                            null
+                        }
+                        "hashCode" -> System.identityHashCode(proxy)
+                        "equals" -> proxy === values?.firstOrNull()
+                        "toString" -> "NetworkSharingClientsCallback"
+                        else -> null
+                    }
+                }
+                manager.javaClass.getMethod("registerTetheringEventCallback", java.util.concurrent.Executor::class.java, callbackType)
+                    .invoke(manager, executor, callback)
+                try {
+                    if (clientsReady.await(1500, TimeUnit.MILLISECONDS) && count != null) json.put("clientCount", count)
+                } finally {
+                    manager.javaClass.getMethod("unregisterTetheringEventCallback", callbackType).invoke(manager, callback)
+                }
+            }
             if (operation == "startHotspot" && state != 13) error("Hotspot not enabled: $state")
             try {
                 val config = wifi.javaClass.getMethod("getSoftApConfiguration").invoke(wifi)

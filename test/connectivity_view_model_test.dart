@@ -10,7 +10,7 @@ void main() {
     final vm = ConnectivityViewModel(repository);
     await Future<void>.delayed(Duration.zero);
     final pending = vm.refresh();
-    await vm.refresh();
+    final duplicate = vm.refresh();
     expect(repository.calls, 1);
     expect(vm.checking, isTrue);
     repository.result.complete(
@@ -21,6 +21,7 @@ void main() {
       ),
     );
     await pending;
+    await duplicate;
     expect(vm.checking, isFalse);
     expect(vm.snapshot!.state, ConnectivityState.online);
     vm.dispose();

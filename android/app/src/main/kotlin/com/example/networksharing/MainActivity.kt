@@ -12,6 +12,13 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    // Android Back keeps the Activity/engine and foreground BLE session alive,
+    // matching the desktop close-to-tray behavior. No notification action needs
+    // to launch an Activity to execute a permitted hotspot operation.
+    override fun popSystemNavigator(): Boolean {
+        moveTaskToBack(true)
+        return true
+    }
     private lateinit var networkControl: NetworkControl
     private val channelName = "networksharing/bluetooth"
     private val permissionRequestCode = 4072
