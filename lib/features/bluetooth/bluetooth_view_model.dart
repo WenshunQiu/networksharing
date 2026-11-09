@@ -1,18 +1,41 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/http_connectivity_repository.dart';
+import '../../data/debug_notifications.dart';
+import '../../data/platform_network_control.dart';
+import '../../domain/connectivity.dart';
+
 import 'bluetooth_repository.dart';
 import '../../data/app_logger.dart';
 
 class BluetoothViewModel extends ChangeNotifier {
-  BluetoothViewModel(this._repository) {
-    unawaited(_restorePairing());
+  BluetoothViewModel(
+    this._repository, {
+    ConnectivityRepository? connectivityRepository,
+    this.heartbeatInterval = const Duration(seconds: 10),
+    this.peerTimeout = const Duration(seconds: 30),
+    this.reconnectDelay = const Duration(seconds: 5),
+    this.initialReconnectDelay = const Duration(seconds: 2),
+    this.initialNetworkDelay = const Duration(seconds: 5),
+  }) : _connectivityRepository =
+           connectivityRepository ?? HttpConnectivityRepository() {
+    _pairingLoadFuture = _restorePairing();
+    DebugNotifications.instance.onHotspotResponse =
+        _handleHotspotNotificationAction;
   }
   final BluetoothRepository _repository;
+  final ConnectivityRepository _connectivityRepository;
+  final Duration heartbeatInterval;
+  final Duration peerTimeout;
+  final Duration reconnectDelay;
+  final Duration initialReconnectDelay;
+  final Duration initialNetworkDelay;
   BluetoothSnapshot? snapshot;
   List<BluetoothDevice> discoveredDevices = const [];
   bool checking = false;
@@ -28,9 +51,38 @@ class BluetoothViewModel extends ChangeNotifier {
   String? connectedDeviceId;
   String? pairedDeviceId;
   String? pairedDeviceName;
+  String? _resumeToken;
+  final Map<String, String> _resumeTokensByDevice = {};
+  bool pairingRestored = false;
+  bool pairingRestoring = false;
   String? diagnosticReceivedAt;
   String? transportError;
   String? lastMessage;
+  String? lastNetworkProbeResult;
+  String? lastReceivedWifiCredentials;
+  String? peerNetworkStatus;
+  bool peerOnline = false;
+  bool peerHotspotRequestPending = false;
+  DateTime? peerLastSeen;
+  Timer? _heartbeatTimer;
+  Timer? _reconnectTimer;
+  bool _reconnecting = false;
+  bool _autoReconnect = true;
+  Timer? _initialNetworkTimer;
+  Timer? _hotspotRequestExpiryTimer;
+  bool _initialNetworkSent = false;
+  String? _pendingHotspotRequestId;
+  DateTime? _pendingHotspotRequestAt;
+  String? _outgoingHotspotRequestId;
+  String? hotspotRequestStatus;
+  String? localHotspotStatus;
+  bool hotspotBusy = false;
+  late final Future<void> _pairingLoadFuture;
+  String? receivedWifiSsid;
+  String? receivedWifiPassword;
+  String? wifiTransferStatus;
+  String? _wifiTransferId;
+  Timer? _wifiTransferTimer;
   StreamSubscription<String>? _messageSubscription;
   StreamSubscription<List<BluetoothDevice>>? _discoverySubscription;
   String? error;
@@ -38,6 +90,12 @@ class BluetoothViewModel extends ChangeNotifier {
   int _operation = 0;
   final _log = AppLogger.instance;
   static const _platformChannel = MethodChannel('networksharing/bluetooth');
+
+  String _createResumeToken() {
+    final random = Random.secure();
+    return base64UrlEncode(List<int>.generate(32, (_) => random.nextInt(256)))
+        .replaceAll('=', '');
+  }
 
   BluetoothDevice? get connectedDevice {
     final id = connectedDeviceId;
@@ -53,25 +111,95 @@ class BluetoothViewModel extends ChangeNotifier {
   Future<void> _restorePairing() async {
     try {
       final prefs = SharedPreferencesAsync();
-      pairedDeviceId = await prefs.getString('networksharing.pairedDeviceId');
-      pairedDeviceName = await prefs.getString(
-        'networksharing.pairedDeviceName',
+      final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+      pairedDeviceId = await prefs.getString(
+        isWindows
+            ? 'networksharing.pairedDeviceId.windows'
+            : 'networksharing.pairedDeviceId',
       );
+      pairedDeviceName = await prefs.getString(
+        isWindows
+            ? 'networksharing.pairedDeviceName.windows'
+            : 'networksharing.pairedDeviceName',
+      );
+      if (defaultTargetPlatform == TargetPlatform.windows) {
+        _resumeToken = await prefs.getString(
+          'networksharing.pairResumeToken.windows',
+        );
+      } else {
+        _resumeToken = await prefs.getString('networksharing.pairResumeToken');
+      }
+      final tokenMap = await prefs.getString(
+        defaultTargetPlatform == TargetPlatform.windows
+            ? 'networksharing.peerResumeTokens.windows'
+            : 'networksharing.peerResumeTokens',
+      );
+      if (tokenMap != null) {
+        final decoded = jsonDecode(tokenMap);
+        if (decoded is Map<String, dynamic>) {
+          _resumeTokensByDevice.addAll(
+            decoded.map((key, value) => MapEntry(key, value.toString())),
+          );
+        }
+      }
+      if (pairedDeviceId != null && _resumeToken != null) {
+        _resumeTokensByDevice.putIfAbsent(pairedDeviceId!, () => _resumeToken!);
+      }
+      pairingRestored = pairedDeviceId != null && _resumeToken != null;
+      if (pairingRestored &&
+          !_disposed &&
+          defaultTargetPlatform == TargetPlatform.android) {
+        _reconnectTimer = Timer(initialReconnectDelay, _attemptReconnect);
+      }
       if (!_disposed) notifyListeners();
-    } catch (_) {}
+    } catch (error) {
+      _log.warning('pairing', 'restore.failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
   }
 
   Future<void> _persistPairing(BluetoothDevice? device) async {
     try {
       final prefs = SharedPreferencesAsync();
       if (device == null) {
-        await prefs.remove('networksharing.pairedDeviceId');
-        await prefs.remove('networksharing.pairedDeviceName');
+        final suffix = defaultTargetPlatform == TargetPlatform.windows
+            ? '.windows'
+            : '';
+        await prefs.remove('networksharing.pairedDeviceId$suffix');
+        await prefs.remove('networksharing.pairedDeviceName$suffix');
       } else {
-        await prefs.setString('networksharing.pairedDeviceId', device.id);
-        await prefs.setString('networksharing.pairedDeviceName', device.name);
+        final suffix = defaultTargetPlatform == TargetPlatform.windows
+            ? '.windows'
+            : '';
+        await prefs.setString(
+          'networksharing.pairedDeviceId$suffix',
+          device.id,
+        );
+        await prefs.setString(
+          'networksharing.pairedDeviceName$suffix',
+          device.name,
+        );
+        if (_resumeToken != null) {
+          await prefs.setString(
+            defaultTargetPlatform == TargetPlatform.windows
+                ? 'networksharing.pairResumeToken.windows'
+                : 'networksharing.pairResumeToken',
+            _resumeToken!,
+          );
+        }
       }
-    } catch (_) {}
+      await prefs.setString(
+        defaultTargetPlatform == TargetPlatform.windows
+            ? 'networksharing.peerResumeTokens.windows'
+            : 'networksharing.peerResumeTokens',
+        jsonEncode(_resumeTokensByDevice),
+      );
+    } catch (error) {
+      _log.error('pairing', 'persistence.failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
   }
 
   Future<void> inspect() async {
@@ -157,6 +285,8 @@ class BluetoothViewModel extends ChangeNotifier {
 
   Future<void> setAdvertising(bool enabled) async {
     if (_disposed || advertising == enabled) return;
+    await _pairingLoadFuture;
+    if (_disposed) return;
     _log.info('ui', 'bluetooth.advertising_toggled', {'enabled': enabled});
     transportError = null;
     try {
@@ -180,16 +310,25 @@ class BluetoothViewModel extends ChangeNotifier {
 
   Future<void> connect(BluetoothDevice device) async {
     if (_disposed || connecting || connectedDeviceId != null) return;
+    await _pairingLoadFuture;
+    if (_disposed) return;
+    _autoReconnect = true;
     _log.info('ui', 'bluetooth.connect_clicked');
     connecting = true;
     transportError = null;
     notifyListeners();
     try {
-      await _repository.connect(device.id);
+      await _repository.connect(device.id).timeout(const Duration(seconds: 30));
       if (_disposed) return;
       connectedDeviceId = device.id;
+      _resumeToken = _resumeTokensByDevice[device.id];
+      applicationPaired = false;
+      pairingRestoring = _resumeToken != null;
       _listenForMessages();
       await _setBackgroundTransport(true);
+      if (_resumeToken != null) {
+        unawaited(_resumeApplicationPairing());
+      }
     } catch (error) {
       _log.error('bluetooth', 'connect.viewmodel_failed', {
         'error': _diagnosticError(error),
@@ -203,6 +342,56 @@ class BluetoothViewModel extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  Future<void> _resumeApplicationPairing() async {
+    if (_resumeToken == null ||
+        connectedDeviceId == null ||
+        _pairingResult != null) {
+      return;
+    }
+    final result = Completer<bool>();
+    _pairingResult = result;
+    _log.info('pairing', 'resume.requested');
+    try {
+      await _repository.sendMessage(
+        jsonEncode({'type': 'pairing_resume_request', 'token': _resumeToken}),
+      );
+      final accepted = await result.future.timeout(const Duration(seconds: 8));
+      applicationPaired = accepted;
+      pairingRestored = accepted;
+      if (accepted) _startPeerMonitoring();
+      if (!accepted) {
+        transportError = '已保存的配对凭据未被对端接受；记录已保留，请重新输入配对码验证。';
+        _log.warning('pairing', 'resume.rejected_pairing_preserved');
+      }
+      _log.info('pairing', accepted ? 'resume.accepted' : 'resume.rejected');
+    } on TimeoutException {
+      _log.warning('pairing', 'resume.timeout');
+      unawaited(_retryConnectionAfterResumeTimeout());
+    } catch (error) {
+      _log.error('pairing', 'resume.failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+      unawaited(_retryConnectionAfterResumeTimeout());
+    } finally {
+      pairingRestoring = false;
+      if (identical(_pairingResult, result)) _pairingResult = null;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> _retryConnectionAfterResumeTimeout() async {
+    if (_disposed || !_autoReconnect) return;
+    try {
+      await _repository.disconnect();
+    } catch (_) {}
+    if (_disposed) return;
+    connectedDeviceId = null;
+    applicationPaired = false;
+    _stopPeerMonitoring();
+    _reconnectTimer = Timer(reconnectDelay, _attemptReconnect);
+    notifyListeners();
   }
 
   Future<void> pairSystemDevice(BluetoothDevice device) async {
@@ -229,10 +418,12 @@ class BluetoothViewModel extends ChangeNotifier {
 
   Future<void> disconnect() async {
     if (_disposed) return;
+    _autoReconnect = false;
     _log.info('ui', 'bluetooth.disconnect_clicked');
     try {
       await _repository.disconnect();
       connectedDeviceId = null;
+      _stopPeerMonitoring();
       applicationPaired = false;
       lastMessage = null;
       if (!advertising) await _setBackgroundTransport(false);
@@ -263,11 +454,11 @@ class BluetoothViewModel extends ChangeNotifier {
   }
 
   void setDisplayedPairingCode(String? code) {
-    if (_displayedPairingCode != code) applicationPaired = false;
     _displayedPairingCode = code;
   }
 
   Future<bool> authenticatePairingCode(String code) async {
+    await _pairingLoadFuture;
     if (_disposed || connectedDeviceId == null || _pairingResult != null) {
       return false;
     }
@@ -282,11 +473,19 @@ class BluetoothViewModel extends ChangeNotifier {
         jsonEncode({'type': 'pairing_auth_request', 'code': code}),
       );
       final success = await result.future.timeout(const Duration(seconds: 15));
+      if (_disposed) return false;
       applicationPaired = success;
       if (success) {
+        _startPeerMonitoring();
+        pairingRestored = true;
         pairedDeviceId = connectedDeviceId;
-        pairedDeviceName = connectedDevice?.name;
-        unawaited(_persistPairing(connectedDevice));
+        pairedDeviceName = connectedDevice?.name ?? 'Windows 电脑';
+        if (pairedDeviceId != null) {
+          _resumeTokensByDevice[pairedDeviceId!] = _resumeToken!;
+          await _persistPairing(
+            BluetoothDevice(id: pairedDeviceId!, name: pairedDeviceName!),
+          );
+        }
       }
       _log.info(
         'pairing',
@@ -312,7 +511,32 @@ class BluetoothViewModel extends ChangeNotifier {
     try {
       final decoded = jsonDecode(message);
       if (decoded is! Map<String, dynamic>) return;
+      if (_disposed) return;
+      if (applicationPaired) {
+        peerLastSeen = DateTime.now();
+        peerOnline = true;
+      }
+      final type = decoded['type'];
+      if (!applicationPaired &&
+          const {
+            'hotspot_request',
+            'hotspot_request_response',
+            'hotspot_operation_result',
+            'notification_test',
+            'debug_wifi_credentials',
+            'debug_wifi_connection_result',
+            'debug_wifi_credentials_ack',
+            'network_probe_result',
+            'network_probe_ack',
+            'peer_network_status',
+          }.contains(type)) {
+        _log.warning('bluetooth', 'protocol.unauthenticated_message_rejected', {
+          'type': type,
+        });
+        return;
+      }
       if (decoded['type'] == 'pairing_auth_request') {
+        await _pairingLoadFuture;
         final code = decoded['code'];
         final accepted =
             code is String &&
@@ -325,18 +549,177 @@ class BluetoothViewModel extends ChangeNotifier {
         );
         if (accepted) {
           applicationPaired = true;
-          pairedDeviceId = connectedDeviceId;
-          pairedDeviceName = connectedDevice?.name;
-          unawaited(_persistPairing(connectedDevice));
+          _startPeerMonitoring();
+          pairingRestored = true;
+          _resumeToken ??= _createResumeToken();
+          pairedDeviceId ??= connectedDeviceId ?? 'windows-central';
+          pairedDeviceName ??= connectedDevice?.name ?? '已配对手机';
+          _resumeTokensByDevice[pairedDeviceId!] = _resumeToken!;
+          await _persistPairing(
+            BluetoothDevice(id: pairedDeviceId!, name: pairedDeviceName!),
+          );
         }
         await _repository.sendMessage(
-          jsonEncode({'type': 'pairing_auth_result', 'success': accepted}),
+          jsonEncode({
+            'type': 'pairing_auth_result',
+            'success': accepted,
+            if (accepted) 'resumeToken': _resumeToken,
+          }),
         );
+        notifyListeners();
+      } else if (decoded['type'] == 'pairing_resume_request') {
+        await _pairingLoadFuture;
+        final token = decoded['token'];
+        final expectedToken = connectedDeviceId == null
+            ? _resumeTokensByDevice[pairedDeviceId] ?? _resumeToken
+            : _resumeTokensByDevice[connectedDeviceId] ?? _resumeToken;
+        final accepted =
+            token is String && expectedToken != null && token == expectedToken;
+        applicationPaired = accepted;
+        if (accepted) _startPeerMonitoring();
+        await _repository.sendMessage(
+          jsonEncode({'type': 'pairing_resume_result', 'success': accepted}),
+        );
+        _log.info('pairing', accepted ? 'resume.accepted' : 'resume.rejected');
+        notifyListeners();
+      } else if (decoded['type'] == 'network_probe_result') {
+        lastNetworkProbeResult = decoded['online'] == true
+            ? '对端报告：互联网可用'
+            : '对端报告：无法确认互联网连通';
+        _log.info('debug', 'network_probe.peer_result_received', {
+          'online': decoded['online'] == true,
+        });
+        await _repository.sendMessage(
+          jsonEncode({'type': 'network_probe_ack', 'received': true}),
+        );
+        notifyListeners();
+      } else if (decoded['type'] == 'network_probe_ack') {
+        lastNetworkProbeResult = '对端已收到网络检测结果';
+        _log.info('debug', 'network_probe.peer_ack_received');
+        notifyListeners();
+      } else if (decoded['type'] == 'hotspot_request') {
+        final requestId = decoded['requestId'];
+        if (requestId is! String || requestId.isEmpty) return;
+        peerHotspotRequestPending = true;
+        _pendingHotspotRequestId = requestId;
+        _pendingHotspotRequestAt = DateTime.now();
+        _hotspotRequestExpiryTimer?.cancel();
+        _hotspotRequestExpiryTimer = Timer(const Duration(minutes: 2), () {
+          if (_pendingHotspotRequestId != requestId) return;
+          peerHotspotRequestPending = false;
+          _pendingHotspotRequestId = null;
+          _pendingHotspotRequestAt = null;
+          if (!_disposed) notifyListeners();
+          _log.info('debug', 'hotspot.request_expired');
+        });
+        unawaited(_notifyPeerHotspotRequest(requestId));
+        notifyListeners();
+      } else if (decoded['type'] == 'hotspot_request_response') {
+        if (decoded['requestId'] != _outgoingHotspotRequestId) return;
+        hotspotRequestStatus = decoded['accepted'] == true
+            ? '对端已确认，正在开启热点。'
+            : '对端拒绝了开启热点请求。';
+        _log.info('debug', 'hotspot.peer_response_received', {
+          'accepted': decoded['accepted'] == true,
+        });
+        notifyListeners();
+      } else if (decoded['type'] == 'hotspot_operation_result') {
+        if (decoded['requestId'] != _outgoingHotspotRequestId) return;
+        hotspotRequestStatus = decoded['success'] == true
+            ? '对端热点已启动，等待接收网络信息。'
+            : '对端启动热点失败，请查看对端日志。';
+        _log.info('debug', 'hotspot.peer_operation_result', {
+          'success': decoded['success'] == true,
+        });
+        notifyListeners();
+      } else if (decoded['type'] == 'notification_test') {
+        unawaited(
+          DebugNotifications.instance
+              .show(
+                'NetworkSharing 通知测试',
+                decoded['body']?.toString() ?? '收到对端测试通知。',
+              )
+              .catchError((Object error) {
+                _log.warning('notification', 'peer_test.failed', {
+                  'errorType': error.runtimeType.toString(),
+                });
+              }),
+        );
+      } else if (decoded['type'] == 'heartbeat') {
+        if (!applicationPaired) return;
+        if (_heartbeatTimer == null) _startPeerMonitoring();
+        peerLastSeen = DateTime.now();
+        peerOnline = true;
+        await _repository.sendMessage(jsonEncode({'type': 'heartbeat_ack'}));
+        notifyListeners();
+      } else if (decoded['type'] == 'heartbeat_ack') {
+        if (!applicationPaired) return;
+        peerLastSeen = DateTime.now();
+        peerOnline = true;
+        notifyListeners();
+      } else if (decoded['type'] == 'peer_network_status') {
+        peerNetworkStatus = decoded['online'] == true ? '互联网可用' : '互联网不可用';
+        _log.info('debug', 'peer.network_status_received', {
+          'online': decoded['online'] == true,
+        });
+        notifyListeners();
+      } else if (decoded['type'] == 'debug_wifi_credentials') {
+        final ssid = decoded['ssid'];
+        final password = decoded['password'];
+        if (ssid is String && password is String) {
+          receivedWifiSsid = ssid;
+          receivedWifiPassword = password;
+          lastReceivedWifiCredentials = '$ssid / ••••••••';
+          wifiTransferStatus = '已收到对端 Wi-Fi 信息。';
+          _log.warning('debug', 'wifi.credentials_received', {
+            'ssidLength': ssid.length,
+            'passwordLength': password.length,
+          });
+          notifyListeners();
+          await _repository.sendMessage(
+            jsonEncode({
+              'type': 'debug_wifi_credentials_ack',
+              'transferId': decoded['transferId'],
+            }),
+          );
+        }
+      } else if (decoded['type'] == 'debug_wifi_credentials_ack') {
+        if (_wifiTransferId != decoded['transferId']) return;
+        _wifiTransferTimer?.cancel();
+        _wifiTransferId = null;
+        wifiTransferStatus = '对端已确认收到 Wi-Fi 信息。';
+        _log.info('debug', 'wifi.credentials_ack_received');
+        notifyListeners();
+      } else if (decoded['type'] == 'debug_wifi_connection_result') {
+        hotspotRequestStatus = decoded['success'] == true
+            ? '对端已连接到共享 Wi-Fi。'
+            : '对端连接 Wi-Fi 失败。';
+        _log.info('debug', 'wifi.peer_connection_result', {
+          'success': decoded['success'] == true,
+        });
         notifyListeners();
       } else if (decoded['type'] == 'pairing_auth_result') {
         if (!(_pairingResult?.isCompleted ?? true)) {
+          final token = decoded['resumeToken'];
+          if (decoded['success'] == true &&
+              (token is! String || token.isEmpty)) {
+            _log.warning('pairing', 'authentication.missing_resume_token');
+            _pairingResult!.complete(false);
+            return;
+          }
+          if (decoded['success'] == true) {
+            _resumeToken = decoded['resumeToken'] as String?;
+            pairingRestored = _resumeToken != null;
+            if (pairedDeviceId != null && _resumeToken != null) {
+              _resumeTokensByDevice[pairedDeviceId!] = _resumeToken!;
+            }
+          }
           _pairingResult!.complete(decoded['success'] == true);
         }
+      } else if (decoded['type'] == 'pairing_resume_result' &&
+          _pairingResult != null &&
+          !_pairingResult!.isCompleted) {
+        _pairingResult!.complete(decoded['success'] == true);
       }
     } catch (error) {
       _log.warning('pairing', 'authentication.message_invalid', {
@@ -372,9 +755,353 @@ class BluetoothViewModel extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  Future<void> runNetworkProbe() async {
+    _log.info('debug', 'network_probe.started');
+    try {
+      final result = await _connectivityRepository.check();
+      lastNetworkProbeResult = result.state == ConnectivityState.online
+          ? '互联网可用：${result.reachableHosts.join('、')}'
+          : '百度和 Google 均无法连接';
+      if (connectedDeviceId != null || advertising) {
+        await _repository.sendMessage(
+          jsonEncode({
+            'type': 'network_probe_result',
+            'online': result.state == ConnectivityState.online,
+            'reachableHosts': result.reachableHosts.toList(),
+            'checkedAt': result.checkedAt.toUtc().toIso8601String(),
+          }),
+        );
+        _log.info('debug', 'network_probe.result_sent', {
+          'online': result.state == ConnectivityState.online,
+          'reachableHostCount': result.reachableHosts.length,
+        });
+      }
+    } catch (error) {
+      lastNetworkProbeResult = '检测失败';
+      _log.error('debug', 'network_probe.failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> runLocalNetworkProbe() async {
+    _log.info('debug', 'network_probe.local_started');
+    try {
+      final result = await _connectivityRepository.check();
+      lastNetworkProbeResult = result.state == ConnectivityState.online
+          ? '互联网可用：'
+          : '百度和 Google 均无法连接';
+      _log.info('debug', 'network_probe.local_result', {
+        'online': result.state == ConnectivityState.online,
+        'reachableHostCount': result.reachableHosts.length,
+      });
+    } catch (error) {
+      lastNetworkProbeResult = '检测失败';
+      _log.error('debug', 'network_probe.local_failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> sendDebugWifiCredentials(String ssid, String password) async {
+    if ((connectedDeviceId == null && !advertising) || !applicationPaired) {
+      throw StateError('需要先建立并恢复应用配对连接');
+    }
+    _log.warning('debug', 'wifi.credentials_send_requested', {
+      'ssidLength': ssid.length,
+      'passwordLength': password.length,
+    });
+    final transferId = _createResumeToken().substring(0, 16);
+    _wifiTransferId = transferId;
+    wifiTransferStatus = '正在发送 Wi-Fi 信息。';
+    await _repository.sendMessage(
+      jsonEncode({
+        'type': 'debug_wifi_credentials',
+        'ssid': ssid,
+        'password': password,
+        'transferId': transferId,
+      }),
+    );
+    _log.warning('debug', 'wifi.credentials_sent');
+    if (_wifiTransferId != transferId) return;
+    _wifiTransferTimer?.cancel();
+    _wifiTransferTimer = Timer(const Duration(seconds: 8), () {
+      if (_wifiTransferId != transferId) return;
+      wifiTransferStatus = '已发送，但尚未收到对端确认；可重新发送。';
+      _log.warning('debug', 'wifi.credentials_ack_timeout');
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  void _startPeerMonitoring() {
+    _stopPeerMonitoring();
+    peerOnline = true;
+    peerLastSeen = DateTime.now();
+    _initialNetworkSent = false;
+    _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) async {
+      if (_disposed ||
+          (connectedDeviceId == null && !advertising) ||
+          !applicationPaired) {
+        return;
+      }
+      try {
+        await _repository.sendMessage(jsonEncode({'type': 'heartbeat'}));
+      } catch (error) {
+        _log.warning('bluetooth', 'heartbeat.send_failed', {
+          'errorType': error.runtimeType.toString(),
+        });
+      }
+      final last = peerLastSeen;
+      peerOnline =
+          last != null && DateTime.now().difference(last) < peerTimeout;
+      if (!peerOnline && !_reconnecting) {
+        applicationPaired = false;
+        peerHotspotRequestPending = false;
+        _pendingHotspotRequestId = null;
+        peerNetworkStatus = null;
+        unawaited(_attemptReconnect());
+      }
+      if (!_disposed) notifyListeners();
+    });
+    _initialNetworkTimer = Timer(
+      initialNetworkDelay,
+      _sendInitialNetworkStatus,
+    );
+    notifyListeners();
+  }
+
+  Future<void> _sendInitialNetworkStatus() async {
+    if (_disposed ||
+        _initialNetworkSent ||
+        (connectedDeviceId == null && !advertising) ||
+        !applicationPaired) {
+      return;
+    }
+    _initialNetworkSent = true;
+    try {
+      final result = await _connectivityRepository.check();
+      if (_disposed || !applicationPaired) return;
+      await _repository.sendMessage(
+        jsonEncode({
+          'type': 'peer_network_status',
+          'online': result.state == ConnectivityState.online,
+          'reachableHosts': result.reachableHosts.toList(),
+        }),
+      );
+      _log.info('debug', 'peer.network_status_sent', {
+        'online': result.state == ConnectivityState.online,
+      });
+    } catch (error) {
+      _log.error('debug', 'peer.network_status_failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
+  }
+
+  void _stopPeerMonitoring() {
+    _heartbeatTimer?.cancel();
+    _initialNetworkTimer?.cancel();
+    _hotspotRequestExpiryTimer?.cancel();
+    _wifiTransferTimer?.cancel();
+    _wifiTransferId = null;
+    peerHotspotRequestPending = false;
+    _pendingHotspotRequestId = null;
+    _pendingHotspotRequestAt = null;
+    _heartbeatTimer = null;
+    _initialNetworkTimer = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    peerOnline = false;
+  }
+
+  Future<void> requestPeerHotspot() async {
+    if ((connectedDeviceId == null && !advertising) || !applicationPaired) {
+      throw StateError('需要先建立并恢复应用配对连接');
+    }
+    final requestId = _createResumeToken().substring(0, 16);
+    _outgoingHotspotRequestId = requestId;
+    await _repository.sendMessage(
+      jsonEncode({'type': 'hotspot_request', 'requestId': requestId}),
+    );
+    _log.info('debug', 'hotspot.peer_request_sent');
+  }
+
+  Future<void> sendNotificationTest() async {
+    await DebugNotifications.instance.show('NetworkSharing 通知测试', '本机通知功能正常。');
+    if ((connectedDeviceId != null || advertising) && applicationPaired) {
+      await _repository.sendMessage(
+        jsonEncode({'type': 'notification_test', 'body': '已配对设备发送的通知测试。'}),
+      );
+    }
+  }
+
+  Future<void> _notifyPeerHotspotRequest(String requestId) async {
+    try {
+      await DebugNotifications.instance.show(
+        '热点连接请求',
+        '已配对设备请求开启本机热点。',
+        hotspotRequestId: requestId,
+      );
+    } catch (error) {
+      _log.warning('debug', 'hotspot.notification_failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    }
+  }
+
+  Future<void> respondToPeerHotspot(bool accepted) async {
+    final requestId = _pendingHotspotRequestId;
+    if (_disposed ||
+        !applicationPaired ||
+        requestId == null ||
+        (connectedDeviceId == null && !advertising)) {
+      return;
+    }
+    final requestedAt = _pendingHotspotRequestAt;
+    if (requestedAt == null ||
+        DateTime.now().difference(requestedAt) > const Duration(minutes: 2)) {
+      peerHotspotRequestPending = false;
+      _pendingHotspotRequestId = null;
+      if (!_disposed) notifyListeners();
+      return;
+    }
+    peerHotspotRequestPending = false;
+    _pendingHotspotRequestId = null;
+    _hotspotRequestExpiryTimer?.cancel();
+    await _repository.sendMessage(
+      jsonEncode({
+        'type': 'hotspot_request_response',
+        'requestId': requestId,
+        'accepted': accepted,
+      }),
+    );
+    notifyListeners();
+    if (accepted) {
+      final success = await controlHotspot('startHotspot');
+      await _repository.sendMessage(
+        jsonEncode({
+          'type': 'hotspot_operation_result',
+          'requestId': requestId,
+          'success': success,
+        }),
+      );
+    }
+  }
+
+  Future<void> _handleHotspotNotificationAction(
+    String requestId,
+    bool accepted,
+  ) async {
+    if (_pendingHotspotRequestId != requestId) return;
+    await respondToPeerHotspot(accepted);
+  }
+
+  Future<bool> controlHotspot(String operation) async {
+    if (hotspotBusy || _disposed) return false;
+    hotspotBusy = true;
+    notifyListeners();
+    try {
+      final result = await PlatformNetworkControl().execute(operation);
+      localHotspotStatus = result['message']?.toString();
+      final ssid = result['ssid']?.toString();
+      final password = result['password']?.toString();
+      if (operation != 'stopHotspot' &&
+          result['enabled'] == true &&
+          ssid != null &&
+          ssid.isNotEmpty &&
+          password != null &&
+          applicationPaired) {
+        await sendDebugWifiCredentials(ssid, password);
+        localHotspotStatus = '热点信息已读取并发送给对端。';
+      } else if (operation != 'stopHotspot') {
+        _log.warning('debug', 'hotspot.credentials_unavailable');
+      }
+      return true;
+    } catch (error) {
+      localHotspotStatus = error.toString();
+      _log.error('debug', 'hotspot.request_start_failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+      return false;
+    } finally {
+      hotspotBusy = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> _attemptReconnect() async {
+    if (!_disposed && _autoReconnect && (connecting || scanning)) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = Timer(reconnectDelay, _attemptReconnect);
+      return;
+    }
+    if (_disposed ||
+        !_autoReconnect ||
+        _reconnecting ||
+        connecting ||
+        scanning ||
+        pairedDeviceId == null ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    _reconnecting = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    final targetId = pairedDeviceId;
+    try {
+      try {
+        await _repository.disconnect().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      connectedDeviceId = null;
+      applicationPaired = false;
+      _stopPeerMonitoring();
+      if (_disposed || !_autoReconnect) return;
+      _log.info('bluetooth', 'reconnect.scan_started');
+      final devices = await _repository
+          .scan(duration: const Duration(seconds: 5))
+          .timeout(const Duration(seconds: 25));
+      BluetoothDevice? target;
+      for (final device in devices) {
+        if (device.id == targetId) {
+          target = device;
+          break;
+        }
+      }
+      if (_disposed || !_autoReconnect) return;
+      if (target != null) {
+        _log.info('bluetooth', 'reconnect.target_found');
+        await connect(target);
+      } else {
+        _log.info('bluetooth', 'reconnect.target_not_found');
+      }
+    } catch (error) {
+      _log.warning('bluetooth', 'reconnect.failed', {
+        'errorType': error.runtimeType.toString(),
+      });
+    } finally {
+      _reconnecting = false;
+      if (connectedDeviceId == null && !_disposed && _autoReconnect) {
+        _reconnectTimer?.cancel();
+        _reconnectTimer = Timer(reconnectDelay, _attemptReconnect);
+      }
+    }
+  }
+
   String _diagnosticError(Object error) {
     final text = error.toString();
     return text.length > 320 ? text.substring(0, 320) : text;
+  }
+
+  Future<void> reportWifiConnectionResult(bool success) async {
+    if ((connectedDeviceId == null && !advertising) || !applicationPaired) {
+      return;
+    }
+    await _repository.sendMessage(
+      jsonEncode({'type': 'debug_wifi_connection_result', 'success': success}),
+    );
+    _log.info('debug', 'wifi.connection_result_sent', {'success': success});
   }
 
   void _listenForMessages() {
@@ -397,7 +1124,13 @@ class BluetoothViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _stopPeerMonitoring();
+    _reconnectTimer?.cancel();
     _disposed = true;
+    if (DebugNotifications.instance.onHotspotResponse ==
+        _handleHotspotNotificationAction) {
+      DebugNotifications.instance.onHotspotResponse = null;
+    }
     _operation++;
     _messageSubscription?.cancel();
     _discoverySubscription?.cancel();

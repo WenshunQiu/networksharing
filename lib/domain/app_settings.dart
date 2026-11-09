@@ -1,7 +1,5 @@
 enum ConnectionAutomation { askBeforeSharing, manualOnly }
 
-enum WindowsCloseBehavior { ask, minimizeToTray, exit }
-
 class AppSettings {
   const AppSettings({
     this.backgroundMonitoring = true,
@@ -9,7 +7,6 @@ class AppSettings {
     this.startMonitoringOnLaunch = true,
     this.idleTimeoutMinutes = 10,
     this.connectionAutomation = ConnectionAutomation.askBeforeSharing,
-    this.windowsCloseBehavior = WindowsCloseBehavior.ask,
   });
 
   final bool backgroundMonitoring;
@@ -17,7 +14,6 @@ class AppSettings {
   final bool startMonitoringOnLaunch;
   final int idleTimeoutMinutes;
   final ConnectionAutomation connectionAutomation;
-  final WindowsCloseBehavior windowsCloseBehavior;
   static const idleTimeoutOptions = [5, 10, 15, 30, 60];
 
   @override
@@ -27,8 +23,7 @@ class AppSettings {
       other.notificationsEnabled == notificationsEnabled &&
       other.startMonitoringOnLaunch == startMonitoringOnLaunch &&
       other.idleTimeoutMinutes == idleTimeoutMinutes &&
-      other.connectionAutomation == connectionAutomation &&
-      other.windowsCloseBehavior == windowsCloseBehavior;
+      other.connectionAutomation == connectionAutomation;
 
   @override
   int get hashCode => Object.hash(
@@ -37,7 +32,6 @@ class AppSettings {
     startMonitoringOnLaunch,
     idleTimeoutMinutes,
     connectionAutomation,
-    windowsCloseBehavior,
   );
 
   AppSettings copyWith({
@@ -46,7 +40,6 @@ class AppSettings {
     bool? startMonitoringOnLaunch,
     int? idleTimeoutMinutes,
     ConnectionAutomation? connectionAutomation,
-    WindowsCloseBehavior? windowsCloseBehavior,
   }) => AppSettings(
     backgroundMonitoring: backgroundMonitoring ?? this.backgroundMonitoring,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -54,6 +47,5 @@ class AppSettings {
         startMonitoringOnLaunch ?? this.startMonitoringOnLaunch,
     idleTimeoutMinutes: idleTimeoutMinutes ?? this.idleTimeoutMinutes,
     connectionAutomation: connectionAutomation ?? this.connectionAutomation,
-    windowsCloseBehavior: windowsCloseBehavior ?? this.windowsCloseBehavior,
   );
 }

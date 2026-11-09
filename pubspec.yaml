@@ -42,6 +42,7 @@ dependencies:
   bluetooth_low_energy: ^6.2.1
   path_provider: ^2.1.5
   share_plus: ^13.3.1
+  flutter_local_notifications: ^23.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -62,6 +63,8 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+    - assets/windows_network.ps1
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

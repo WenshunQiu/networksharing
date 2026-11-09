@@ -74,7 +74,8 @@ void main() {
       ..discoveredDevices = const [
         BluetoothDevice(id: 'computer', name: 'Office PC'),
       ]
-      ..applicationPaired = true;
+      ..applicationPaired = true
+      ..peerOnline = true;
     final connectivity = ConnectivityViewModel(_TestConnectivityRepository());
     await tester.pumpWidget(
       FluentApp(
@@ -87,7 +88,7 @@ void main() {
       ),
     );
     expect(find.text('Office PC'), findsOneWidget);
-    expect(find.text('在线 · 应用配对成功'), findsOneWidget);
+    expect(find.text('在线 · 网络状态检测中'), findsOneWidget);
     expect(tester.takeException(), isNull);
     bluetooth.dispose();
     connectivity.dispose();
@@ -98,8 +99,9 @@ void main() {
 class _TestConnectivityRepository implements ConnectivityRepository {
   @override
   Future<ConnectivitySnapshot> check() async => ConnectivitySnapshot(
-    state: ConnectivityState.unknown,
+    state: ConnectivityState.offline,
     checkedAt: DateTime.now(),
+    reachableHosts: const {},
   );
 }
 

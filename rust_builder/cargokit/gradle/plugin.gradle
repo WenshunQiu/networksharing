@@ -170,7 +170,13 @@ class CargoKitPlugin implements Plugin<Project> {
                     ndkVersion = plugin.project.android.ndkVersion
                     sdkDirectory = plugin.project.android.sdkDirectory
                     minSdkVersion = plugin.project.android.defaultConfig.minSdkVersion.apiLevel as int
-                    compileSdkVersion = plugin.project.android.compileSdkVersion.substring(8) as int
+                    // AGP 9 can report android-37.0. Cargokit only needs the
+                    // major Android API number for the NDK environment.
+                    def sdkMatch = (plugin.project.android.compileSdkVersion =~ /^android-([0-9]+)/)
+                    if (!sdkMatch.find()) {
+                        throw new GradleException("Unsupported Android compile SDK format")
+                    }
+                    compileSdkVersion = sdkMatch.group(1) as int
                     targetPlatforms = platforms
                     pluginFile = CargoKitPlugin.file
                 }

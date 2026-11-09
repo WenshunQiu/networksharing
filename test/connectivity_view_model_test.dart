@@ -8,6 +8,7 @@ void main() {
   test('deduplicates checks and records the result', () async {
     final repository = PendingConnectivityRepository();
     final vm = ConnectivityViewModel(repository);
+    await Future<void>.delayed(Duration.zero);
     final pending = vm.refresh();
     await vm.refresh();
     expect(repository.calls, 1);
@@ -16,6 +17,7 @@ void main() {
       ConnectivitySnapshot(
         state: ConnectivityState.online,
         checkedAt: DateTime.now(),
+        reachableHosts: const {'www.baidu.com'},
       ),
     );
     await pending;
@@ -27,6 +29,7 @@ void main() {
   test('late failure after disposal does not notify listeners', () async {
     final repository = PendingConnectivityRepository();
     final vm = ConnectivityViewModel(repository);
+    await Future<void>.delayed(Duration.zero);
     final pending = vm.refresh();
     vm.dispose();
     repository.result.completeError(StateError('unavailable'));

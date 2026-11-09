@@ -34,7 +34,7 @@ class DeviceStatusPage extends StatelessWidget {
                     ? '尚未检测'
                     : viewModel.snapshot!.state == ConnectivityState.online
                     ? '互联网可用'
-                    : '无法确认网络可用性',
+                    : '未检测到网络连接',
               ),
               const SizedBox(height: 12),
               FilledButton(
@@ -42,7 +42,11 @@ class DeviceStatusPage extends StatelessWidget {
                 child: Text(viewModel.checking ? '正在检测…' : '检测网络'),
               ),
               const SizedBox(height: 12),
-              const Text('点击后访问 Microsoft 连通性测试地址。单个地址不可达不能确定设备离线。目前尚未启动后台监测。'),
+              Text(
+                viewModel.snapshot?.reachableHosts.isNotEmpty == true
+                    ? '可达站点：${viewModel.snapshot!.reachableHosts.join('、')}'
+                    : '自动检测百度和 Google 的 HTTPS 连通性。',
+              ),
               const SizedBox(height: 24),
               Text('已配对设备', style: FluentTheme.of(context).typography.subtitle),
               const SizedBox(height: 12),
@@ -58,10 +62,10 @@ class DeviceStatusPage extends StatelessWidget {
     final bluetooth = bluetoothViewModel;
     final device = bluetooth.connectedDevice;
     final isWindows = defaultTargetPlatform == TargetPlatform.windows;
-    if (bluetooth.applicationPaired) {
+    if (bluetooth.peerOnline) {
       return _DeviceTile(
         name: isWindows ? '已连接手机' : (device?.name ?? 'Windows 电脑'),
-        status: '在线 · 应用配对成功',
+        status: '在线 · ${bluetooth.peerNetworkStatus ?? '网络状态检测中'}',
         icon: FluentIcons.devices2,
         severity: InfoBarSeverity.success,
         onManagePermissions: _managePermissions,

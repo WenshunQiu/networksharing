@@ -12,6 +12,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private lateinit var networkControl: NetworkControl
     private val channelName = "networksharing/bluetooth"
     private val permissionRequestCode = 4072
     private var pendingPermissionResult: MethodChannel.Result? = null
@@ -24,6 +25,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        networkControl = NetworkControl(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -47,6 +49,19 @@ class MainActivity : FlutterActivity() {
                         startActivity(android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))
                         result.success(true)
                     }
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "networksharing/debug")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "selectWifi" -> {
+                        startActivity(android.content.Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))
+                        result.success("已打开系统 Wi-Fi 设置，请选择网络并完成连接。")
+                    }
+                    "toggleHotspot", "startHotspot", "stopHotspot", "getHotspot" ->
+                        networkControl.hotspot(if (call.method == "toggleHotspot") "startHotspot" else call.method, result)
+                    "connectWifi" -> networkControl.connectWifi(call, result)
                     else -> result.notImplemented()
                 }
             }
@@ -202,6 +217,7 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (networkControl.onPermissionsResult(requestCode, grantResults)) return
         if (requestCode == notificationPermissionRequestCode) {
             val result = pendingServiceResult ?: return
             pendingServiceResult = null
@@ -241,6 +257,9 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        if (::networkControl.isInitialized) networkControl.dispose()
+        pendingServiceResult?.error("activity_destroyed", "Service request interrupted", null)
+        pendingServiceResult = null
         bondTimeouts.values.forEach { mainHandler.removeCallbacks(it) }
         bondTimeouts.clear()
         bondResults.values.forEach { it.error("activity_destroyed", "Pairing interrupted", null) }
@@ -252,6 +271,11 @@ class MainActivity : FlutterActivity() {
         pendingScanResult?.error("activity_destroyed", "Permission request interrupted", null)
         pendingScanResult = null
         super.onDestroy()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (::networkControl.isInitialized) networkControl.onActivityResult(requestCode, resultCode, data)
     }
 
     @Suppress("MissingPermission")

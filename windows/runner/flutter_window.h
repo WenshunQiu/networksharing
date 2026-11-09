@@ -30,7 +30,6 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   bool exit_requested_ = false;
   bool tray_icon_added_ = false;
-  bool close_confirmation_pending_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

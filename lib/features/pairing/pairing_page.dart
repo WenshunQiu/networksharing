@@ -105,12 +105,18 @@ class _PairingPageState extends State<PairingPage> {
                               title: Text(
                                 bluetooth.applicationPaired
                                     ? '应用配对成功'
+                                    : bluetooth.hasPersistedPairing
+                                    ? '已保存设备：${bluetooth.pairedDeviceName ?? '已配对手机'}'
                                     : bluetooth.advertising
                                     ? '正在广播，可供手机发现'
                                     : '电脑广播未开启',
                               ),
                               content: bluetooth.applicationPaired
                                   ? const Text('手机已验证电脑显示的配对码。')
+                                  : bluetooth.hasPersistedPairing
+                                  ? const Text(
+                                      '上次应用配对已保存；当前设备连接状态以实时 BLE 链路为准。',
+                                    )
                                   : null,
                               severity: bluetooth.applicationPaired
                                   ? InfoBarSeverity.success
@@ -192,7 +198,7 @@ class _BluetoothDevices extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: viewModel,
+    animation: Listenable.merge([viewModel, pairingViewModel]),
     builder: (context, _) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -217,26 +223,69 @@ class _BluetoothDevices extends StatelessWidget {
         ),
         if (viewModel.scanning) const ProgressBar(),
         ...viewModel.discoveredDevices.map(
-          (device) => ListTile(
-            leading: const Icon(FluentIcons.bluetooth),
-            title: Text(device.name),
-            subtitle: const Text('NetworkSharing Windows 电脑'),
-            trailing: Button(
-              onPressed:
-                  viewModel.connecting || viewModel.connectedDeviceId != null
-                  ? null
-                  : () async {
-                      await viewModel.connect(device);
-                      if (viewModel.connectedDeviceId == device.id) {
-                        pairingViewModel.setSystemPaired(true);
-                        pairingViewModel.setMessage('已连接电脑，请输入电脑屏幕显示的配对码。');
-                      }
-                    },
-              child: Text(viewModel.connecting ? '正在连接…' : '连接电脑'),
+          (device) => Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: FluentTheme.of(context)
+                  .resources
+                  .cardBackgroundFillColorDefault,
+              border: Border.all(
+                color: FluentTheme.of(context).resources.cardStrokeColorDefault,
+              ),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                const Icon(FluentIcons.bluetooth),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        device.name,
+                        style: FluentTheme.of(context).typography.bodyStrong,
+                      ),
+                      const Text('NetworkSharing Windows 电脑'),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  onPressed:
+                      viewModel.connecting ||
+                          viewModel.connectedDeviceId != null
+                      ? null
+                      : () async {
+                          await viewModel.connect(device);
+                          if (viewModel.connectedDeviceId == device.id) {
+                            pairingViewModel.setSystemPaired(true);
+                            pairingViewModel.setMessage('已连接电脑，请输入电脑屏幕显示的配对码。');
+                          }
+                        },
+                  child: Text(viewModel.connecting ? '正在连接…' : '连接'),
+                ),
+              ],
             ),
           ),
         ),
-        if (viewModel.connectedDeviceId != null) ...[
+        if (viewModel.connectedDeviceId != null &&
+            viewModel.applicationPaired) ...[
+          const SizedBox(height: 12),
+          const InfoBar(
+            title: Text('应用配对成功'),
+            content: Text('已恢复可信设备连接。'),
+            severity: InfoBarSeverity.success,
+          ),
+        ] else if (viewModel.connectedDeviceId != null &&
+            viewModel.pairingRestoring) ...[
+          const SizedBox(height: 12),
+          const InfoBar(
+            title: Text('正在恢复应用配对…'),
+            content: Text('正在验证此设备此前保存的配对凭据。'),
+          ),
+          const ProgressBar(),
+        ] else if (viewModel.connectedDeviceId != null) ...[
           const SizedBox(height: 16),
           _EnterCode(
             controller: codeController,

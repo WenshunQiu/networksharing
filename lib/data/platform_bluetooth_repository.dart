@@ -38,6 +38,7 @@ class PlatformBluetoothRepository implements BluetoothRepository {
   final Map<String, ble.Central> _subscribedCentrals = {};
   final ControlFrameDecoder _peripheralDecoder = ControlFrameDecoder();
   final ControlFrameDecoder _centralDecoder = ControlFrameDecoder();
+  Future<void> _sendTail = Future<void>.value();
 
   @override
   Future<BluetoothSnapshot> inspect() async {
@@ -362,17 +363,28 @@ class PlatformBluetoothRepository implements BluetoothRepository {
   Future<void> disconnect() async {
     _log.info('bluetooth', 'connection.disconnect_requested');
     final peripheral = _connectedPeripheral;
-    if (peripheral != null) await _central.disconnect(peripheral);
-    _connectedPeripheral = null;
-    _remoteCharacteristics.clear();
-    _centralDecoder.reset();
-    await _notifySubscription?.cancel();
-    _notifySubscription = null;
+    try {
+      if (peripheral != null) await _central.disconnect(peripheral);
+    } finally {
+      _connectedPeripheral = null;
+      _remoteCharacteristics.clear();
+      _centralDecoder.reset();
+      await _notifySubscription?.cancel();
+      _notifySubscription = null;
+    }
     _log.info('bluetooth', 'connection.disconnected');
   }
 
   @override
-  Future<void> sendMessage(String message) async {
+  Future<void> sendMessage(String message) {
+    // A decoder holds one message at a time. Never interleave heartbeat,
+    // authentication and credential fragments on the same GATT transport.
+    final send = _sendTail.then((_) => _sendMessage(message));
+    _sendTail = send.catchError((Object _) {});
+    return send;
+  }
+
+  Future<void> _sendMessage(String message) async {
     final peripheral = _connectedPeripheral;
     final characteristic = _remoteCharacteristics[controlWriteUuid];
     if (peripheral != null && characteristic != null) {

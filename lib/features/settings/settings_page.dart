@@ -6,14 +6,22 @@ import 'package:share_plus/share_plus.dart';
 
 import 'dart:typed_data';
 
+import '../debug/debug_page.dart';
+import '../bluetooth/bluetooth_view_model.dart';
+
 import '../../data/app_logger.dart';
 
 import '../../domain/app_settings.dart';
 import 'settings_view_model.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({required this.viewModel, super.key});
+  const SettingsPage({
+    required this.viewModel,
+    this.bluetoothViewModel,
+    super.key,
+  });
   final SettingsViewModel viewModel;
+  final BluetoothViewModel? bluetoothViewModel;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -53,6 +61,17 @@ class SettingsPage extends StatelessWidget {
                     child: Center(child: ProgressRing()),
                   )
                 else ...[
+                  if (bluetoothViewModel != null)
+                    FilledButton(
+                      onPressed: () => Navigator.of(context).push(
+                        FluentPageRoute(
+                          builder: (_) =>
+                              DebugPage(bluetooth: bluetoothViewModel!),
+                        ),
+                      ),
+                      child: const Text('打开 Debug 页面'),
+                    ),
+                  const SizedBox(height: 16),
                   const SizedBox(height: 24),
                   ToggleSwitch(
                     checked: settings.backgroundMonitoring,
@@ -123,35 +142,6 @@ class SettingsPage extends StatelessWidget {
                             if (v != null) {
                               vm.update(
                                 settings.copyWith(connectionAutomation: v),
-                              );
-                            }
-                          }
-                        : null,
-                  ),
-                  const SizedBox(height: 24),
-                  const Text('Windows 点击关闭时'),
-                  const SizedBox(height: 8),
-                  ComboBox<WindowsCloseBehavior>(
-                    value: settings.windowsCloseBehavior,
-                    items: const [
-                      ComboBoxItem(
-                        value: WindowsCloseBehavior.ask,
-                        child: Text('每次询问'),
-                      ),
-                      ComboBoxItem(
-                        value: WindowsCloseBehavior.minimizeToTray,
-                        child: Text('默认缩回托盘'),
-                      ),
-                      ComboBoxItem(
-                        value: WindowsCloseBehavior.exit,
-                        child: Text('默认退出应用'),
-                      ),
-                    ],
-                    onChanged: enabled
-                        ? (value) {
-                            if (value != null) {
-                              vm.update(
-                                settings.copyWith(windowsCloseBehavior: value),
                               );
                             }
                           }

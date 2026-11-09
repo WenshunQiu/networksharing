@@ -1,6 +1,8 @@
 # 实现进度与运行说明
 
-更新日期：2026-11-08
+更新日期：2026-11-09
+
+本页描述当前代码；若旧阶段条目与本页 Debug 联调方案冲突，以当前条目及 [network-debug.md](network-debug.md) 为准。
 
 ## 开发环境
 
@@ -13,7 +15,7 @@
 - Fluent UI 正文与标题字体按平台继承系统中文字体：Windows Microsoft YaHei UI，Android 系统 sans-serif；未捆绑额外中文字体。平台字体映射有单测覆盖。
 
 - 应用设置通过 SharedPreferencesAsync 本地持久化：后台监测、通知、启动监测、热点空闲关闭时长和共享请求确认模式；未知设置值安全回退。设置页更改后自动保存，并在加载/保存失败时显示状态。
-- 设置序列化采用版本化 JSON，加载失败时禁止编辑覆盖原数据，保存失败时恢复之前的界面值；扩展和迁移约定见 settings.md。当前仅保存偏好，尚未驱动后台、通知和热点系统能力。
+- 设置序列化采用版本化 JSON，加载失败时禁止编辑覆盖原数据，保存失败时恢复之前的界面值；扩展和迁移约定见 settings.md。通知和 BLE 后台连接已接入；网络/热点调试入口在本页记录。正式自动策略仍需后续阶段。
 
 - Android/Windows 共用 Fluent UI 页面；按窗口宽度切换窄屏和展开导航，断点为 760 逻辑像素。
 - 配对首页支持 Rust 安全随机码生成、五分钟有效期、重新生成、输入清洗与六位校验。
@@ -21,19 +23,18 @@
 - 配对码由 Rust 使用系统安全随机源生成，带随机 session ID 与 5 分钟有效期；Flutter 通过 flutter_rust_bridge 调用。
 - Rust 提供版本化配对 envelope JSON 编解码、session 内序号/消息 ID 重放保护，并由 FRB 暴露给 Dart。
 - Rust/FRB 提供双向共享会话状态机：显式同意、热点准备、凭据就绪、加入网络、连通验证、活动、空闲关闭及终止状态；通过 revision 拒绝过期并发更新，并阻止同一设备参与冲突会话。
-- 明确区分本地配对码预览与真实设备配对。当前尚未通过蓝牙广播验证码、认证对端或持久化配对身份。
-- 设备状态页支持主动网络检测。访问 Microsoft 连通性测试地址，响应匹配时报告可用，失败或重定向时报告未知，不据此触发自动共享。
+- 手机通过 BLE 验证 Windows 当前显示的验证码；双方保存同一恢复令牌以恢复应用配对。此阶段为单设备调试认证，尚非加密会话。
+- 设备状态页启动网络检测并每 30 秒刷新，并发访问百度与 Google 的 HTTPS 首页，任一可达即可判断为在线；目前不自动触发完整网络共享流程。
 - 领域网络接口和 Repository 与页面分离；蓝牙通过 PairingRepository 接口预留接入点。
 - 蓝牙基础检查已接入配对页：Windows 通过 Rust WinRT/FRB 查询适配器与经典蓝牙已绑定设备；Android 通过平台通道按需申请附近设备权限并枚举已绑定设备。两端共享 Repository 契约、ViewModel 与页面。系统绑定不等于应用配对；平台边界和实机清单见 platform-capabilities.md。
-- BLE 控制通道已接入应用层：定义 Android/Windows 共用 GATT 服务及写入/通知特征；配对页可在显示码模式广播，在输入码模式扫描 NetworkSharing 服务并发起 Central 连接，展示传输连接状态与诊断消息。支持带消息 ID、总长和偏移的 BLE MTU 分片重组。当前不代表配对认证；诊断消息不能执行热点操作或承载凭据。
+- BLE 控制通道已接入应用层：Windows 广播 NetworkSharing GATT 服务，Android 扫描并连接；支持 BLE MTU 分片重组与串行发送队列。认证/恢复、心跳、网络状态和 Debug 热点凭据经此通道传输。
 
-## 尚未实现
+## 仍待实机验证或后续实现
 
-- BLE 双设备实机互通、配对码认证通道、设备身份与可信设备持久化。当前配对页面不会报告真实配对成功。
-- 原生后台服务、托盘、网络状态订阅和交互式通知。
-- Android/Windows 热点控制、Wi-Fi 自动接入、客户端空闲计时与自动关闭。
-- Shizuku/Root Provider 及权限引导。
-- Rust 已承载配对会话、消息封套、重放检查和进程内共享状态机；尚未接入真实热点 Provider。
+- BLE、配对恢复、交互通知和两端网络控制仍需目标 Android 手机与 Windows 电脑联测，尤其 root shell、Android 热点配置读取及 BLE 后台行为。
+- Android 前台服务与 Windows 托盘已实现；进程被系统/用户结束后的自动启动、登录自启和厂商后台限制仍未处理。
+- 多设备连接、权限细分、活动连接的热点客户端空闲检测和自动关热点仍属后续阶段。
+- Rust 已承载配对会话、消息封套和进程内共享状态机；当前热点/Wi-Fi 平台控制暂由 Flutter 适配层与 Windows PowerShell WinRT adapter 执行。
 
 ## 后台能力与扩展路线（2026-11-08）
 
@@ -42,12 +43,52 @@
 - “设备状态”中的当前设备使用独立磁贴展示在线/等待状态和应用配对结果；“管理权限”跳转至 Android 应用权限页或 Windows 蓝牙设置。Windows 手机名称尚未由后端提供，因此仅展示通用设备名。
 - 当前仍为单一活动 BLE peer，不能同时管理多个设备或独立权限。多设备后续方案：将单个 connectedDeviceId 与全局 applicationPaired 演进为 DeviceSession 集合，按稳定设备身份保存认证状态、在线状态、能力/授权范围、最近连接时间和会话 revision；每台设备独立断连、撤销权限与重连，热点共享状态仍以单个活动网络会话协调冲突。广播发现、设备配对存储、并发 GATT 限制与 UI 列表作为独立阶段评审，本轮不实施。
 
+## Debug 与当前连接能力（2026-11-09）
+
+- Windows 保存“已配对手机”占位身份和恢复令牌；手机保存发现的 Windows BLE ID 和同一令牌。启动先加载持久化，再处理配对/恢复。Windows 持续广播等待手机，Android 启动后扫描并恢复。
+- Android 正确码验证成功后隐藏验证码输入和开始配对按钮；错误码/超时仍保留输入区域便于重试。附近 Windows 设备以独立磁贴呈现。
+- 设置增加 Debug 页面入口；网络检测沿用 HTTP 连通性探测，电脑端将结果经 BLE 通知手机，手机回复 ACK，测试结果和事件写入本机结构化日志。
+- Debug 热点与 Wi-Fi 已接入 Windows WinRT/NETSH、Android root helper/系统网络请求；可显式发送 SSID 和密码。系统 Wi-Fi 选择页保留为辅助入口。普通权限 Android 热点仍可能被系统拒绝，须看具体返回值。
+- Windows 关闭窗口保持默认缩回托盘，不再询问，也移除了设置页面对应选项。
+
+## 断线恢复与网络控制边界（2026-11-09）
+
+- 首次验证码认证成功后由 Windows 广播端生成随机恢复令牌，双端分别持久化同一令牌；Windows 键按单设备占位身份保存，手机按 BLE 设备 ID 保存。Android 启动后周期扫描已配对 Windows 设备，重新连接并验证恢复令牌。拒绝恢复会保留设备记录并提示重新输入验证码。后台 BLE 持续性与 Windows Peripheral 重启后可发现性需要实机验证。
+- 网络检测并发访问 www.baidu.com 和 www.google.com 的 HTTPS 首页，任一返回可接受状态即认为可联网，并将可达主机列表通过调试消息通知对端。
+- Windows 移动热点通过 WinRT NetworkOperatorTetheringManager 读取、启动与停止；开发机已验证 start 返回 On 并读取凭据，stop 返回 Off，恢复到测试前的关闭状态。跨设备凭据传输与真实 Wi-Fi 加入仍待联测。
+- Android Debug 热点先运行 APK 内 RootHotspot helper（su/app_process + TetheringManager，尝试隐藏 API 豁免并反射读取热点配置），普通权限 fallback 尝试 TetheringManager 并返回系统权限限制；失败不伪称成功。修改系统设置权限本身不授予公开 tethering API 权限。Root、系统 API 与凭据读取需按目标机型实测。
+- Debug Wi-Fi 页面提供输入 SSID/密码并连接、以及连接蓝牙收到的凭据；连接结果会经 BLE 返回对端。
+- 调试通知注册 Android 通知动作和 Windows Toast 动作；通知测试可同时触发两端本机通知，热点请求带 requestId 并提供系统通知内允许/拒绝。允许时回调启动热点并回传凭据，无需 Debug 页面保持打开。
+- BLE 所有消息经 repository 队列串行写入，避免心跳、认证和凭据分片交错。实际 BLE 和通知动作仍需 Android/Windows 双端实机联测。
+- Debug 阶段允许显式发送 SSID 和密码用于联调；正式功能接入 Rust 加密会话后再开放自动网络切换。
+
+## 后续 Agent 工作方式
+
+- 本项目目前处于积极验证与 Debug 阶段。遇到 Android/Windows 热点、Wi-Fi、后台或蓝牙能力时，先检索官方文档和已有开源项目，优先实际接入平台 API 并在目标设备尝试，不要因为正式产品阶段的安全限制而提前搁置 Debug 功能。
+- Debug 阶段可通过当前蓝牙链路发送热点/Wi-Fi 凭据以验证端到端流程；应提供明确的调试入口、关键操作日志和调用结果，便于开发者实机测试。安全加固、加密会话及面向普通用户的风险提示统一留到后续阶段处理，不作为当前联调的阻断条件。
+- 平台调用失败时保留具体错误和可复现信息，并在当前阶段记录实际能力、系统版本要求和待实测项；不要把“打开设置页面”描述为已实现自动控制，也不要把未经验证的机型行为写成确定结论。
+- 新功能动手前先检索 GitHub、官方样例和活跃开源项目，优先复用可维护的现成方案，避免重复造轮子；记录参考项目、许可证和适配差异。
+- Windows 热点接入 Microsoft WinRT NetworkOperatorTetheringManager；PowerShell adapter 用 System.Runtime.WindowsRuntime 等待系统异步操作。GitHub jfhr/mobile-hotspot（MIT，Jakob Fahr）用于比对相同 WinRT API 生命周期，本项目未复制其源码。
+- Android 参考 TetheringManager、WifiNetworkSuggestion 与 WifiNetworkSpecifier API。WifiNetworkSpecifier 仅提供用户批准的本地连接，不等于系统互联网默认网络；Android 11+ Debug 加入已保存 Wi-Fi 会显示系统确认界面。
+
+## 自动网络与设备在线状态（2026-11-09）
+
+- Windows Dart HttpClient 在实机上同时探测百度和 Google 均失败，但系统 curl.exe 对百度返回 HTTP 200，Google DNS 解析超时；Windows 网络探测现使用系统 curl.exe，Android 仍用 Dart HttpClient。
+- DeviceStatus 页面启动时检测本机网络并每 30 秒刷新一次。BLE 活跃时每 10 秒发心跳，30 秒无对端心跳/响应即离线；新连接 5 秒后仅发送一次本机网络结果给对端。
+- Windows 网卡实测 Hosted Network 不可用；移动热点改为 WinRT WLAN tethering provider。PowerShell 5.1 脚本已在开发机完成 Off → On（含凭据）→ Off 的真实启停验证，未输出 SSID 或密码。
+- 本轮 Android Debug APK 构建成功。Root helper/普通系统 API、热点 Wi-Fi 切换、双端 BLE 凭据、通知动作均待实体设备联调。
+- 网络检索已使用用户提供的 127.0.0.1:10808 代理访问 GitHub API 并比对开源项目；后续可使用本机 set-github-token.ps1，但 token 不能打印、写进文档或提交。
+
 ## 2026-11-08 实机反馈修正
 
-- 配对首页改为发现设备 -> 系统蓝牙配对 -> GATT 连接 -> 应用配对码界面。Android 发起系统 bond 并等待 bond state；Windows 引导用户在系统设置完成蓝牙配对。应用码握手仍是占位接口；当前不会将输入码成功报告成认证成功或开放敏感数据。Windows Peripheral 支持依赖适配器与驱动。
+- 早期实机反馈已改为手机发现电脑、可选系统 bond、GATT 连接、应用码验证；应用码握手现经 BLE 实际往返校验。Windows Peripheral 仍依赖适配器与驱动。
 - Central 连接存在时，发送固定通过对端 GATT write 特征；只有无 Central 连接时才使用本机 Peripheral notify，修复本机同时广播和连接时错误走通知路径、二次发送因无订阅者失败的问题。发送按钮在发送过程中置为忙态。
 - 设置页显示日志文件绝对路径并可导出当前日志与轮转日志；支持目录不可用时回退到临时目录。错误记录保留截断后的平台异常详情。
 - 更新后验证：Flutter 33 项测试、Rust 5 项测试通过；Android Debug APK 与 Windows Debug 构建通过。两设备连接、广播和配对仍待现场复测。
+
+## 当前验证结果（2026-11-09）
+
+Android Debug APK 和 Windows Debug EXE 均构建成功；Dart 静态分析无问题，40 项 Flutter 测试通过。新增覆盖 Windows 重建后恢复令牌、Android 心跳超时自动重连、手动断开停止重连、恢复拒绝保留记录、通知确认只启动一次热点、凭据 ACK、Windows Peripheral 回传凭据。Windows 热点启停及凭据读取实测成功。没有 Android 实机连接，root/系统 Wi-Fi/通知动作与双端 BLE 必须继续联调。
 
 ## 验证命令
 
@@ -74,7 +115,7 @@ BLE 应用接入阶段：30 项 Flutter 测试通过，Dart 静态分析无问�
 
 ## debug 分支：诊断基线
 
-最新实机问题、权限版本划分、修复范围与单向配对流程见 [ble-device-feedback.md](ble-device-feedback.md)。应用层验证码回环已接入，但尚未完成密码学安全握手；热点凭据等敏感数据仍不得通过当前链路发送。
+最新单向配对流程见 [ble-device-feedback.md](ble-device-feedback.md)，网络与热点联调见 [network-debug.md](network-debug.md)。Debug 阶段已允许显式发送凭据；加密和普通用户风险提示留待后续统一加固。
 
 新增结构化 JSONL 文件日志、2 MiB 轮转和排队刷新接口；修复 BLE 初始化等待、Windows Peripheral 不支持的连接事件订阅、CCCD 和订阅者检查。扫描结果实时更新。当前 32 项 Flutter 测试、5 项 Rust 测试和 Dart 静态分析通过。当前 transport 仍为 Flutter BLE 插件，后续分阶段迁移到 Rust。
 

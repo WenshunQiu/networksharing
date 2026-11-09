@@ -10,3 +10,4 @@
 - [平台能力与实机清单](platform-capabilities.md)
 - [设置持久化](settings.md)
 - [实现进度](implementation-status.md)
+- [网络共享 Debug 联调说明](network-debug.md)

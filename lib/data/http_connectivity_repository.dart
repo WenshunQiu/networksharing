@@ -1,39 +1,74 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 import '../domain/connectivity.dart';
 
-/// A single endpoint can prove connectivity, but cannot prove total outage.
 class HttpConnectivityRepository implements ConnectivityRepository {
   @override
   Future<ConnectivitySnapshot> check() async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
-    var state = ConnectivityState.unknown;
+    final hosts = await Future.wait([
+      _canReach('www.baidu.com'),
+      _canReach('www.google.com'),
+    ]);
+    final reachable = <String>{
+      if (hosts[0]) 'www.baidu.com',
+      if (hosts[1]) 'www.google.com',
+    };
+    return ConnectivitySnapshot(
+      state: reachable.isNotEmpty
+          ? ConnectivityState.online
+          : ConnectivityState.offline,
+      checkedAt: DateTime.now(),
+      reachableHosts: reachable,
+    );
+  }
+
+  Future<bool> _canReach(String host) async {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      return _canReachWithCurl(host);
+    }
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
     try {
       final request = await client
-          .getUrl(Uri.parse('https://www.msftconnecttest.com/connecttest.txt'))
-          .timeout(const Duration(seconds: 6));
-      request.followRedirects = false;
+          .getUrl(Uri.https(host, '/'))
+          .timeout(const Duration(seconds: 5));
+      request.followRedirects = true;
       final response = await request.close().timeout(
-        const Duration(seconds: 6),
+        const Duration(seconds: 5),
       );
-      if (response.statusCode == HttpStatus.ok) {
-        final body = await response
-            .transform(utf8.decoder)
-            .join()
-            .timeout(const Duration(seconds: 3));
-        if (body.trim() == 'Microsoft Connect Test') {
-          state = ConnectivityState.online;
-        }
-      }
+      await response.drain<void>().timeout(const Duration(seconds: 2));
+      return response.statusCode >= 200 && response.statusCode < 500;
     } on IOException {
-      state = ConnectivityState.unknown;
+      return false;
     } on TimeoutException {
-      state = ConnectivityState.unknown;
+      return false;
     } finally {
       client.close(force: true);
     }
-    return ConnectivitySnapshot(state: state, checkedAt: DateTime.now());
+  }
+
+  Future<bool> _canReachWithCurl(String host) async {
+    try {
+      final result = await Process.run('curl.exe', [
+        '--location',
+        '--silent',
+        '--show-error',
+        '--output',
+        'NUL',
+        '--max-time',
+        '6',
+        '--write-out',
+        '%{http_code}',
+        'https://$host/',
+      ]).timeout(const Duration(seconds: 8));
+      final code = int.tryParse('${result.stdout}'.trim());
+      return result.exitCode == 0 && code != null && code >= 200 && code < 500;
+    } on ProcessException {
+      return false;
+    } on TimeoutException {
+      return false;
+    }
   }
 }
