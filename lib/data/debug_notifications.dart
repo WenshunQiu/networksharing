@@ -221,7 +221,8 @@ class DebugNotifications {
       ),
     );
     AppLogger.instance.info('notification', 'shown', {
-      'confirmation': hotspotRequestId != null,
+      'hotspotConfirmation': hotspotRequestId != null,
+      'shareRequestConfirmation': shareRequestConfirmation,
     });
   }
 }

@@ -243,6 +243,97 @@ void main() {
     },
   );
 
+  Future<void> joinFromOfflineReminder() async {
+    internet.online = false;
+    await connectivity.refresh();
+    await sharing.tick();
+    clock = clock.add(const Duration(seconds: 20));
+    await sharing.tick();
+    expect(prompts, ['offline']);
+    await sharing.requestNetwork();
+    link.incoming.add({
+      'type': 'share_credentials',
+      'version': 1,
+      'sessionId': sharing.sessionId,
+      'ssid': 'SharedWiFi',
+      'password': 'test-password',
+    });
+    await flush();
+    expect(sharing.phase, SharingPhase.active);
+  }
+
+  test('ending a successful share permits a new offline reminder within five minutes', () async {
+    await joinFromOfflineReminder();
+    await sharing.stop();
+    internet.online = false;
+    await connectivity.refresh();
+    await sharing.tick();
+    expect(prompts, ['offline']);
+    clock = clock.add(const Duration(seconds: 20));
+    await sharing.tick();
+    expect(prompts, ['offline', 'offline']);
+    expect(sharing.canRequest, isTrue);
+    await sharing.tick();
+    expect(prompts, ['offline', 'offline']);
+  });
+
+  test(
+    'external Wi-Fi disconnect retires active requester and prompts again',
+    () async {
+      await joinFromOfflineReminder();
+      final oldSession = sharing.sessionId;
+      internet.online = false;
+      await connectivity.refresh();
+      await sharing.tick();
+      expect(sharing.phase, SharingPhase.active);
+      clock = clock.add(const Duration(seconds: 20));
+      await sharing.tick();
+      expect(link.sent.last, containsPair('type', 'share_cancel'));
+      expect(link.sent.last, containsPair('sessionId', oldSession));
+      expect(operations, ['connectWifi']);
+      expect(prompts, ['offline', 'offline']);
+      expect(sharing.canRequest, isTrue);
+      await sharing.requestNetwork();
+      expect(sharing.sessionId, isNot(oldSession));
+    },
+  );
+
+  test(
+    'brief network loss keeps active session and sends no cancellation',
+    () async {
+      await joinFromOfflineReminder();
+      internet.online = false;
+      await connectivity.refresh();
+      clock = clock.add(const Duration(seconds: 10));
+      await sharing.tick();
+      internet.online = true;
+      await connectivity.refresh();
+      await sharing.tick();
+      expect(sharing.phase, SharingPhase.active);
+      expect(link.sent.where((m) => m['type'] == 'share_cancel'), isEmpty);
+      expect(prompts, ['offline']);
+    },
+  );
+
+  test(
+    'online observation rearms reminder even between sharing monitor ticks',
+    () async {
+      internet.online = false;
+      await connectivity.refresh();
+      clock = clock.add(const Duration(seconds: 20));
+      await sharing.tick();
+      expect(prompts, ['offline']);
+      internet.online = true;
+      await connectivity.refresh();
+      internet.online = false;
+      await connectivity.refresh();
+      clock = clock.add(const Duration(seconds: 20));
+      await sharing.tick();
+      await sharing.tick();
+      expect(prompts, ['offline', 'offline']);
+    },
+  );
+
   test('provider notification approval starts once, sends credentials and closes after idle', () async {
     receive('share_request');
     await flush();

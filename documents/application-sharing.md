@@ -53,6 +53,12 @@ Windows 点击关闭保留托盘和进程，收到通知动作继续由现有进
 
 问题反馈附双端导出日志，优先查看 sharing.session.state、sharing.credentials.sent、notification.background_action.received、bluetooth.runtime.recovery_check 和 network.operation.*。无须贴出密码或配对令牌。
 
+### 连接被手动断开后的提醒（2026-11-10）
+
+用户日志显示共享接入侧成功联网后切到 closed，但 stop 写入新的五分钟离线提醒冷却时间，挡住再次提示。代码还遗漏了系统外关闭 Wi-Fi 后 requester 保留 active 会话的清理，canRequest 因而可能一直为 false。现在监测到请求方在 active 后持续离线 15 秒便结束旧会话并发送 share_cancel；正常 stop 不再启动通知冷却，联网重新出现也会重置冷却。同一段持续离线仍保留五分钟提醒间隔；短暂切网在 15 秒内恢复则保留会话，不重复通知。
+
+按项目约定核对了 fluttercommunity/plus_plugins 的 connectivity_plus 官方 example 中“初始检查 + 监听状态变化”方式（BSD-3-Clause，未复制源码）；本次不引入新依赖，直接订阅已有 ConnectivityViewModel 的探测完成事件。仍使用百度/Google HTTPS 结果，不把仅有 Wi-Fi 连接当作有互联网。
+
 ## 未来功能（已记录，本轮不实现）
 
 ### 优先级较高，后续评估

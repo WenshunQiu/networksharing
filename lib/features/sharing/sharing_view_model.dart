@@ -59,7 +59,7 @@ class SharingViewModel extends ChangeNotifier {
       unawaited(_receive(message));
     });
     bluetooth.addListener(_changed);
-    connectivity.addListener(_changed);
+    connectivity.addListener(_networkChanged);
     settings.addListener(_settingsChanged);
     DebugNotifications.instance.onShareRequest = requestNetwork;
     DebugNotifications.instance.onSharingApproval = _notificationApproval;
@@ -98,6 +98,7 @@ class SharingViewModel extends ChangeNotifier {
   String? _ownedSsid;
   bool _stopAfterOperation = false;
   bool _stopping = false;
+  ConnectivityState? _observedNetworkState;
   bool get connected => bluetooth.applicationPaired && bluetooth.peerOnline;
   bool get pendingApproval => phase == SharingPhase.approval;
   bool get canRequest =>
@@ -183,6 +184,23 @@ class SharingViewModel extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  void _networkChanged() {
+    final state = connectivity.snapshot?.state;
+    if (!connectivity.checking &&
+        state != null &&
+        state != _observedNetworkState) {
+      _observedNetworkState = state;
+      _offlineSince = state == ConnectivityState.offline ? _now() : null;
+      if (state == ConnectivityState.online) _lastPrompt = null;
+      _log.info('sharing', 'network.changed', {
+        'online': state == ConnectivityState.online,
+        'phase': phase.name,
+        'reminderRearmed': state == ConnectivityState.online,
+      });
+    }
+    _changed();
+  }
+
   void _set(SharingPhase next, String message) {
     if (_disposed) return;
     phase = next;
@@ -210,7 +228,7 @@ class SharingViewModel extends ChangeNotifier {
       final now = _now();
       if (!_permissionReady) return;
       if (_deadline != null && now.isAfter(_deadline!)) {
-        await stop(reason: '请求或连接等待超时，请重试。');
+        await stop(reason: '请求或连接等待超时，请重试。', rearmReminder: false);
         _set(SharingPhase.failed, '请求或连接等待超时，请重试。');
       }
       if (ownsHotspot &&
@@ -256,6 +274,15 @@ class SharingViewModel extends ChangeNotifier {
         return;
       }
       _offlineSince ??= now;
+      // A completed join must not keep canRequest=false after its network is
+      // disconnected outside the app. Retire the old session after debounce.
+      if (phase == SharingPhase.active &&
+          !providing &&
+          !busy &&
+          now.difference(_offlineSince!) >= offlineDelay) {
+        _log.info('sharing', 'session.network_lost', {'sessionId': sessionId});
+        await stop(reason: '共享网络已断开，可重新请求热点。');
+      }
       final options = settings.settings;
       if (!options.backgroundMonitoring ||
           !options.notificationsEnabled ||
@@ -274,6 +301,9 @@ class SharingViewModel extends ChangeNotifier {
         '是否请求已配对设备开启热点？对方确认后将自动连接。',
         shareRequestConfirmation: true,
       );
+      _log.info('sharing', 'offline_notification.shown', {
+        'sessionId': sessionId,
+      });
     } catch (error) {
       _log.warning('sharing', 'monitor.failed', {
         'errorType': error.runtimeType.toString(),
@@ -512,13 +542,24 @@ class SharingViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> stop({bool send = true, String reason = '已结束共享。'}) async {
+  Future<void> stop({
+    bool send = true,
+    String reason = '已结束共享。',
+    bool rearmReminder = true,
+  }) async {
     if (_disposed || _stopping) return;
     _stopping = true;
     try {
       _generation++;
       _deadline = null;
-      _lastPrompt = _now();
+      // Cooldown belongs to reminders in the same offline episode, not to
+      // stopping a successful session. A fresh disconnect can prompt again.
+      if (rearmReminder) {
+        _lastPrompt = null;
+        _log.info('sharing', 'offline_notification.rearmed', {
+          'sessionId': sessionId,
+        });
+      }
       if (busy) _stopAfterOperation = true;
       if (send && sessionId != null && connected) {
         try {
@@ -560,7 +601,7 @@ class SharingViewModel extends ChangeNotifier {
     _timer?.cancel();
     _subscription.cancel();
     bluetooth.removeListener(_changed);
-    connectivity.removeListener(_changed);
+    connectivity.removeListener(_networkChanged);
     settings.removeListener(_settingsChanged);
     DebugNotifications.instance.onShareRequest = null;
     DebugNotifications.instance.onSharingApproval = null;
