@@ -69,6 +69,8 @@ class PlatformNetworkControl {
         'operation': operation,
         'success': result['success'],
         'enabled': result['enabled'],
+        'configurationSource': result['configurationSource'],
+        'configurationReadContext': result['configurationReadContext'],
         'message': result['message'],
       });
       if (result['success'] != true) {

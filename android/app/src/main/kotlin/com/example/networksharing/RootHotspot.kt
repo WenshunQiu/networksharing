@@ -30,11 +30,26 @@ object RootHotspot {
             val wifi = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
             val manager = context.getSystemService("tethering") as TetheringManager
             val operation = args.firstOrNull() ?: "getHotspot"
+            var requestedSsid: String? = null
+            var requestedPassword: String? = null
+            var configurationSource: String? = null
+            var configurationReadContext: String? = null
             if (operation == "startHotspot") {
+                val supplied = System.`in`.bufferedReader().readLine()?.takeIf { it.isNotBlank() }
+                val saved = if (supplied != null) {
+                    configurationReadContext = "application"
+                    SavedHotspotConfiguration.decode(supplied)
+                } else {
+                    configurationReadContext = "root_system"
+                    SavedHotspotConfiguration.read(wifi)
+                }
+                requestedSsid = saved.ssid
+                requestedPassword = saved.password
+                val start = SavedHotspotConfiguration.prepare(wifi, saved)
+                configurationSource = start.source
                 val latch = CountDownLatch(1)
                 var failure: Int? = null
-                val request = TetheringManager.TetheringRequest.Builder(TetheringManager.TETHERING_WIFI).build()
-                manager.startTethering(request, executor, object : TetheringManager.StartTetheringCallback {
+                manager.startTethering(start.request, executor, object : TetheringManager.StartTetheringCallback {
                     override fun onTetheringStarted() { latch.countDown() }
                     override fun onTetheringFailed(error: Int) { failure = error; latch.countDown() }
                 })
@@ -86,10 +101,27 @@ object RootHotspot {
             }
             if (operation == "startHotspot" && state != 13) error("Hotspot not enabled: $state")
             try {
-                val config = wifi.javaClass.getMethod("getSoftApConfiguration").invoke(wifi)
-                json.put("ssid", config.javaClass.getMethod("getSsid").invoke(config))
-                json.put("password", config.javaClass.getMethod("getPassphrase").invoke(config) ?: "")
-            } catch (_: Exception) {
+                val current = SavedHotspotConfiguration.read(wifi)
+                val actualSsid = current.ssid
+                val actualPassword = current.password
+                if (operation == "startHotspot" &&
+                    (actualSsid != requestedSsid || actualPassword != requestedPassword)) {
+                    runCatching {
+                        manager.javaClass.getMethod("stopTethering", Int::class.javaPrimitiveType)
+                            .invoke(manager, TetheringManager.TETHERING_WIFI)
+                    }
+                    error("Started hotspot does not match the saved system configuration")
+                }
+                json.put("ssid", actualSsid)
+                json.put("password", actualPassword)
+                if (operation == "startHotspot") {
+                    json.put("configurationSource", configurationSource)
+                    json.put("configurationReadContext", configurationReadContext)
+                }
+            } catch (error: Exception) {
+                // Never fall back to unrelated legacy credentials after a
+                // start verification failure. The receiver would join another AP.
+                if (operation == "startHotspot") throw error
                 runCatching {
                     val config = wifi.javaClass.getMethod("getWifiApConfiguration").invoke(wifi)
                     json.put("ssid", config.javaClass.getField("SSID").get(config))

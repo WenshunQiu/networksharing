@@ -38,9 +38,23 @@ class NetworkControl(private val activity: Activity) {
         Thread {
             var response: Map<String, Any?>? = null
             try {
+                val savedConfig = if (operation == "startHotspot") runCatching {
+                    val wifi = activity.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                    SavedHotspotConfiguration.encode(SavedHotspotConfiguration.read(wifi))
+                }.getOrNull() else null
                 val apk = activity.applicationInfo.sourceDir
                 val process = ProcessBuilder("su", "-c", "CLASSPATH=" + apk + " app_process /system/bin com.example.networksharing.RootHotspot " + operation)
                     .redirectErrorStream(true).start()
+                // Keep the complete config when the app can read it; otherwise
+                // the privileged helper reads it itself. Never put secrets in argv.
+                if (operation == "startHotspot") {
+                    process.outputStream.bufferedWriter().use { writer ->
+                        if (savedConfig != null) writer.write(savedConfig)
+                        writer.newLine()
+                    }
+                } else {
+                    process.outputStream.close()
+                }
                 // Drain concurrently: a full pipe must never deadlock a root operation.
                 val output = StringBuilder()
                 val reader = Thread {
@@ -79,11 +93,20 @@ class NetworkControl(private val activity: Activity) {
         }
         try {
             val manager = activity.getSystemService("tethering") as android.net.TetheringManager
-            val request = android.net.TetheringManager.TetheringRequest.Builder(android.net.TetheringManager.TETHERING_WIFI).build()
-            manager.startTethering(request, activity.mainExecutor, object : android.net.TetheringManager.StartTetheringCallback {
+            val wifi = activity.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val start = SavedHotspotConfiguration.prepare(wifi)
+            manager.startTethering(start.request, activity.mainExecutor, object : android.net.TetheringManager.StartTetheringCallback {
                 override fun onTetheringStarted() {
-                    result.success(mapOf("success" to true, "enabled" to true,
-                        "message" to "系统 API 已确认热点已启动；若无法读取凭据，请在 Debug 表单手动填写并发送。"))
+                    try {
+                        val config = SavedHotspotConfiguration.verifySaved(wifi, start.saved)
+                        result.success(mapOf("success" to true, "enabled" to true,
+                            "ssid" to config.ssid, "password" to config.password,
+                            "configurationSource" to start.source,
+                            "message" to "系统 API 已使用保存的热点配置启动。"))
+                    } catch (error: Throwable) {
+                        result.success(mapOf("success" to false,
+                            "message" to "系统热点配置核对失败：" + error.javaClass.simpleName))
+                    }
                 }
                 override fun onTetheringFailed(error: Int) {
                     result.success(mapOf("success" to false, "message" to "$rootError；系统热点启动错误码=$error"))

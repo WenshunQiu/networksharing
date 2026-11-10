@@ -34,6 +34,22 @@ Windows 点击关闭保留托盘和进程，收到通知动作继续由现有进
 
 ## 模块与扩展
 
+### Android 复用系统热点配置（2026-11-10）
+
+用户反馈应用开启的手机热点名称/密码与系统设置不同。本轮只修复配置复用；按用户最新要求，不调整热点自动关闭、空闲策略或 Wi-Fi 加入流程。手机日志记录的是提供方，没有 connectWifi 事件，不能将此问题解释为手机额外保存了电脑 Wi-Fi。
+
+启动前通过反射 WifiManager.getSoftApConfiguration() 读取系统保存的完整 SoftApConfiguration，保留名称、密码、安全类型、频段等原有设置。优先尝试应用 Context 读取，经 Parcel 序列化、标准输入交给 Root helper；应用无读取权限时仍在 Root system Context 读取，不要求普通应用先获得隐藏 API 权限。不能将不同 Context 一定返回不同配置当作已确认根因，目前只记录读取来源供实测判断。
+
+新接口反射调用 TetheringRequest.Builder.setSoftApConfiguration(savedConfig) 显式传入，避免只在启动后读出凭据。旧系统缺少请求配置 setter 或运行时拒绝调用时，尝试通过 WifiManager.setSoftApConfiguration 原样回写完整配置，再按默认路径启动；不创建随机名称或重置频段、安全配置。Root 和普通权限 fallback 共用 SavedHotspotConfiguration。
+
+启动后再次核对持久化名称/密码，发送当前配置给对端。注意 getSoftApConfiguration 返回保存的配置，不等于无线接口正在广播配置的回调证明，厂商系统是否真正采用同一配置仍需实机核对。network.operation.completed 增加 configurationSource：system_saved_explicit 表示已显式传入，system_saved_reapplied 表示原样回写后启动，system_saved_default 表示旧接口默认使用保存配置；configurationReadContext 区分 application 和 root_system。日志不记录密码和 SSID 正文。
+
+参考 [AOSP TetheringManager.java](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/heads/main/Tethering/common/TetheringLib/src/android/net/TetheringManager.java) 的 setSoftApConfiguration 注释：未设置配置时采用 WifiManager.getSoftApConfiguration 的持久化配置。仅借鉴 API 语义，未复制第三方实现。
+
+验证：fvm flutter analyze 通过，最终 Android Debug APK 构建通过。需实机先在系统设置配置热点名称/密码、关闭热点，再由应用开启并核对实际广播名称及 Windows 接入；本轮没有修改空闲关闭或联网检测策略，也未声称已实机验证厂商隐藏 API。
+
+### 组件职责
+
 - SharingViewModel：正式会话、通知确认、Provider 编排、超时、取消、空闲检查；通过可注入 NetworkOperation/ShareNotification 测试和扩展。View 不调用系统网络 API。
 - BluetoothViewModel：持久化配对、恢复、心跳，以及已认证 sharingMessages/sendSharingMessage 入口。分享功能通过独立 share_* 消息接入，不把 Debug 消息重新解释为自动操作。
 - PlatformNetworkControl：复用已验证 Android Kotlin/Root 和 Windows PowerShell/WinRT Provider；以后迁移 Rust Provider 时保持操作返回结构。
